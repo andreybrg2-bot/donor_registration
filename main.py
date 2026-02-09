@@ -45,7 +45,7 @@ TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 #os.environ['HTTPS_PROXY'] = '10.1.1.10:3128'
 
 # Режим работы (LOCAL, GOOGLE, HYBRID)
-MODE = "LOCAL"
+MODE = "GOOGLE"
 
 # URL вашего Google Apps Script (ЗАМЕНИТЕ НА СВОЙ!)
 GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbznf0GFFr0HCZgB-_jsSXAY19iwwg-Y_q42T4MPzQVPw3iAufAfwo-ZNKEr3_7HKjPGDQ/exec"
@@ -1927,4 +1927,5 @@ async def main():
         print("✅ Сессии закрыты")
 
 if __name__ == "__main__":
+
     asyncio.run(main())
