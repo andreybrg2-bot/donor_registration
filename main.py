@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 
 # ========== КОНФИГУРАЦИЯ ==========
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbznf0GFFr0HCZgB-_jsSXAY19iwwg-Y_q42T4MPzQVPw3iAufAfwo-ZNKEr3_7HKjPGDQ/exec"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxeoM0H3cCSDHExiRzlYNItipN7eXOtfbJQJJyzTeNltcDY8PU3hS4P5KDeLe39uFID/exec"
 TEST_USER_ID = 5097581039
 MODE = "GOOGLE"  # Проверяем в режиме GOOGLE
 
@@ -296,3 +296,4 @@ if __name__ == "__main__":
     
     input("\nНажмите Enter для выхода...")
     
+
