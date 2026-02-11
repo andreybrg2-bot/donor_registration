@@ -44,7 +44,7 @@ TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 MODE = "GOOGLE"
 
 # URL вашего Google Apps Script (ЗАМЕНИТЕ НА СВОЙ!)
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxeoM0H3cCSDHExiRzlYNItipN7eXOtfbJQJJyzTeNltcDY8PU3hS4P5KDeLe39uFID/exec"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuL_A7CyFHtgvBKKSK74swazQSlj0kwDWY4ITENdOcP-GPMZ1h1JblAEsg4zr3N-a7/exec"
 
 # ID администраторов (для команды /reset)
 ADMIN_IDS = [5097581039]  # Замените на ваш Telegram ID
@@ -2038,3 +2038,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
