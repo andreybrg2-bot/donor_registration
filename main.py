@@ -64,12 +64,12 @@ class GoogleScriptClient:
         cache_key = f"{action}_{user_id}_{json.dumps(data, sort_keys=True)}"
         
         # Проверяем кэш
-        if action in ["get_available_dates"]:
-            if cache_key in self.cache:
-                cache_age = time.time() - self.cache_time.get(cache_key, 0)
-                if cache_age < 300:  # Кэш на 5 минут
-                    print(f"💾 Используем кэшированные данные для {action}")
-                    return self.cache[cache_key]
+#        if action in ["get_available_dates"]:
+#            if cache_key in self.cache:
+#                cache_age = time.time() - self.cache_time.get(cache_key, 0)
+#                if cache_age < 300:  # Кэш на 5 минут
+#                    print(f"💾 Используем кэшированные данные для {action}")
+ #                   return self.cache[cache_key]
         
         try:
             payload = {"action": action, **data}
@@ -296,4 +296,5 @@ if __name__ == "__main__":
     
     input("\nНажмите Enter для выхода...")
     
+
 
