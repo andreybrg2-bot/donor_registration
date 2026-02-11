@@ -1,6 +1,6 @@
 """
 🎯 БОТ ДЛЯ ЗАПИСИ НА ДОНОРСТВО КРОВИ
-Версия: 3.2 (С поддержкой дат, 8 групп крови и обновлением кэша)
+Версия: 3.3 (Полная интеграция с Google Таблицами)
 Автор: AI Assistant
 Дата: 2024
 
@@ -14,6 +14,7 @@
 ✅ Очистка кэша через Google Script
 ✅ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ КЭША ПРИ СТАРТЕ
 ✅ ИСПРАВЛЕНА ОШИБКА ТАЙМАУТА СЕССИИ
+✅ ПОЛНАЯ ИНТЕГРАЦИЯ С GOOGLE ТАБЛИЦАМИ
 """
 
 import logging
@@ -52,7 +53,7 @@ ADMIN_IDS = [5097581039]  # Замените на ваш Telegram ID
 # Таймаут сессии в секундах (10 минут)
 SESSION_TIMEOUT = 600
 
-# ========== КЛИЕНТ GOOGLE SCRIPT (ОБНОВЛЕНО) ==========
+# ========== КЛИЕНТ GOOGLE SCRIPT ==========
 class GoogleScriptClient:
     """Клиент для работы с Google Apps Script"""
     
@@ -113,7 +114,7 @@ class GoogleScriptClient:
             cache_key = f"{action}_{user_id}_{json.dumps(data, sort_keys=True)}"
             
             # Проверяем кэш для некоторых действий
-            if action in ["get_available_dates"]:
+            if action in ["get_available_dates", "get_stats"]:
                 if cache_key in self.cache:
                     cache_age = time.time() - self.cache_time.get(cache_key, 0)
                     if cache_age < 300:  # Кэш на 5 минут
@@ -140,7 +141,7 @@ class GoogleScriptClient:
                     print(f"[GOOGLE] ✅ Успешно: {result.get('status')}")
                     
                     # Сохраняем в кэш (если не принудительное обновление)
-                    if action in ["get_available_dates"] and not force_refresh:
+                    if action in ["get_available_dates", "get_stats"] and not force_refresh:
                         cache_key = f"{action}_{user_id}_{json.dumps(data, sort_keys=True)}"
                         self.cache[cache_key] = result
                         self.cache_time[cache_key] = time.time()
@@ -166,13 +167,13 @@ class GoogleScriptClient:
 # Инициализируем клиент Google Script
 google_client = GoogleScriptClient(GOOGLE_SCRIPT_URL)
 
-# ========== ЛОКАЛЬНОЕ ХРАНИЛИЩЕ (ОБНОВЛЕНО) ==========
+# ========== ЛОКАЛЬНОЕ ХРАНИЛИЩЕ ==========
 class LocalStorage:
     """Локальное хранилище данных для автономного режима"""
     
     def __init__(self):
         self.reset_data()
-        print("[LOCAL] 💾 Локальное хранилище инициализировано (v3.2)")
+        print("[LOCAL] 💾 Локальное хранилище инициализировано (v3.3)")
         
     def reset_data(self):
         """Сбросить все данные"""
@@ -506,7 +507,7 @@ class LocalStorage:
 # Инициализируем локальное хранилище
 local_storage = LocalStorage()
 
-# ========== СЕРВИС ДЛЯ ТАЙМАУТА СЕССИЙ (ИСПРАВЛЕН) ==========
+# ========== СЕРВИС ДЛЯ ТАЙМАУТА СЕССИЙ ==========
 class SessionTimeout:
     """Управление таймаутом сессий"""
     
@@ -536,7 +537,7 @@ class SessionTimeout:
 # Инициализируем сервис таймаута
 session_timeout = SessionTimeout()
 
-# ========== MIDDLEWARE ДЛЯ ПРОВЕРКИ ТАЙМАУТА (ИСПРАВЛЕН) ==========
+# ========== MIDDLEWARE ДЛЯ ПРОВЕРКИ ТАЙМАУТА ==========
 async def timeout_middleware(handler, event, data):
     """Middleware для проверки таймаута сессии"""
     try:
@@ -619,7 +620,7 @@ async def timeout_middleware(handler, event, data):
     # Продолжаем обработку
     return await handler(event, data)
 
-# ========== УНИВЕРСАЛЬНЫЙ API (ОБНОВЛЕНО) ==========
+# ========== УНИВЕРСАЛЬНЫЙ API (ИСПРАВЛЕНО ДЛЯ GOOGLE ТАБЛИЦ) ==========
 def get_available_dates(user_id: int, force_refresh: bool = False) -> dict:
     """Универсальная функция получения доступных дат"""
     if MODE == "LOCAL":
@@ -728,12 +729,21 @@ def get_user_bookings(user_id: int) -> dict:
         return {"status": "error", "data": "Неизвестный режим работы"}
 
 def get_stats() -> dict:
-    """Получить статистику"""
+    """Получить статистику ИЗ GOOGLE ТАБЛИЦ"""
     if MODE == "LOCAL":
         return local_storage.get_stats()
+    elif MODE == "GOOGLE":
+        return google_client.call_api("get_stats", {})
+    elif MODE == "HYBRID":
+        result = google_client.call_api("get_stats", {})
+        
+        if result["status"] == "error":
+            print(f"[HYBRID] 🔄 Google Script недоступен, используем локальную статистику")
+            return local_storage.get_stats()
+        
+        return result
     else:
-        # Для Google Script собираем статистику из локального хранилища
-        return local_storage.get_stats()
+        return {"status": "error", "data": "Неизвестный режим работы"}
 
 def clear_cache() -> dict:
     """Очистить кэш Google Script"""
@@ -802,13 +812,13 @@ class RateLimiter:
 
 rate_limiter = RateLimiter(max_requests=15, time_window=60)
 
-# ========== СОСТОЯНИЯ БОТА (ОБНОВЛЕНО) ==========
+# ========== СОСТОЯНИЯ БОТА ==========
 class Form(StatesGroup):
     waiting_for_blood_group = State()
     waiting_for_date = State()  # Новое состояние вместо waiting_for_day
     waiting_for_time = State()
 
-# ========== ИНЛАЙН-КЛАВИАТУРЫ (ОБНОВЛЕНО) ==========
+# ========== ИНЛАЙН-КЛАВИАТУРЫ ==========
 def get_blood_group_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура для выбора группы крови (8 групп)"""
     builder = InlineKeyboardBuilder()
@@ -954,7 +964,7 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
     
     return builder.as_markup()
 
-# ========== ОСНОВНЫЕ КОМАНДЫ (ОБНОВЛЕНО) ==========
+# ========== ОСНОВНЫЕ КОМАНДЫ ==========
 async def start_command(message: types.Message, state: FSMContext):
     """Команда /start - показывает главное меню"""
     user = message.from_user
@@ -997,7 +1007,7 @@ async def start_command(message: types.Message, state: FSMContext):
     admin_text = "\n👑 *Вы администратор* - доступны дополнительные функции" if is_admin else ""
     
     await message.answer(
-        f"🎯 *Донорская станция v3.2*\n"
+        f"🎯 *Донорская станция v3.3*\n"
         f"{mode_info}\n\n"
         f"👋 Привет, {greeting_name}!{admin_text}\n\n"
         f"Я помогу вам записаться на донорство крови, "
@@ -1007,7 +1017,8 @@ async def start_command(message: types.Message, state: FSMContext):
         f"• 🩸 8 групп крови вместо 4\n"
         f"• ⏰ Автоматический поиск доступных дат\n"
         f"• 🗑️ Очистка и обновление кэша квот\n"
-        f"• 🔄 Автоматическое обновление данных при старте\n\n"
+        f"• 🔄 Автоматическое обновление данных при старте\n"
+        f"• 📊 Статистика из Google Таблиц\n\n"
         f"*Выберите действие:*",
         parse_mode="Markdown",
         reply_markup=get_main_menu_keyboard()
@@ -1207,7 +1218,7 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
         display_date = selected_date
         day_of_week = "неизвестно"
     
-    # Проверяем доступные времена
+    # Проверяем доступные времена ИЗ GOOGLE ТАБЛИЦ
     response = get_free_times(selected_date, blood_group)
     
     if response['status'] == 'error':
@@ -1462,7 +1473,7 @@ async def cancel_command(message: types.Message, state: FSMContext):
 async def help_command(message: types.Message):
     """Команда /help"""
     help_text = (
-        "📋 *Помощь по боту v3.2:*\n\n"
+        "📋 *Помощь по боту v3.3:*\n\n"
         "*Основные функции:*\n"
         "• 📋 Записаться на донорство\n"
         "• 🔍 Проверить доступное время\n"
@@ -1475,7 +1486,8 @@ async def help_command(message: types.Message):
         "⚡ *Автоматический поиск* 6 ближайших рабочих дней\n"
         "⏰ *Таймаут сессии* 10 минут\n"
         "🗑️ *Очистка и обновление кэша квот*\n"
-        "🔄 *Автоматическое обновление данных при старте*\n\n"
+        "🔄 *Автоматическое обновление данных при старте*\n"
+        "📊 *Статистика из Google Таблиц*\n\n"
         "*Правила:*\n"
         "📌 Одна запись в день на пользователя\n"
         "📅 Запись на ближайшие доступные даты\n"
@@ -1566,41 +1578,86 @@ async def show_my_bookings(message: types.Message, user: types.User):
         )
 
 async def stats_command(message: types.Message):
-    """Команда /stats - показать статистику"""
+    """Команда /stats - показать статистику ИЗ GOOGLE ТАБЛИЦ"""
     await show_stats(message)
 
 async def show_stats(message: types.Message):
-    """Показать статистику"""
-    stats = get_stats()
+    """Показать статистику ИЗ GOOGLE ТАБЛИЦ"""
+    stats_response = get_stats()
     
-    total_bookings = stats["total_bookings"]
-    total_users = stats["total_users"]
+    if stats_response['status'] == 'error':
+        await message.answer(
+            f"❌ *Ошибка получения статистики:* {stats_response['data']}",
+            parse_mode="Markdown",
+            reply_markup=get_main_menu_keyboard()
+        )
+        return
     
-    day_stats_text = ""
-    for day, data in stats["day_stats"].items():
-        day_short = day[:3]
-        total_quotas = data.get("total_quotas", 0)
-        quotas_text = ""
+    # Проверяем структуру ответа для разных режимов
+    if MODE == "LOCAL":
+        # Локальный режим
+        total_bookings = stats_response["total_bookings"]
+        total_users = stats_response["total_users"]
         
-        if "quotas" in data:
-            for bg, q in data["quotas"].items():
-                quotas_text += f"{bg}: {q}, "
+        day_stats_text = ""
+        for day, data in stats_response["day_stats"].items():
+            day_short = day[:3]
+            total_quotas = data.get("total_quotas", 0)
+            quotas_text = ""
+            
+            if "quotas" in data:
+                for bg, q in data["quotas"].items():
+                    quotas_text += f"{bg}: {q}, "
+            
+            day_stats_text += f"• *{day}*: всего {total_quotas} мест ({quotas_text.rstrip(', ')})\n"
         
-        day_stats_text += f"• *{day}*: всего {total_quotas} мест ({quotas_text.rstrip(', ')})\n"
-    
-    mode_info = {
-        "LOCAL": "🔧 *Автономный режим*\n⚠️ *Внимание:* При перезапуске бота статистика сбросится!",
-        "GOOGLE": "🌐 *Режим Google Script*\n✅ Данные сохраняются в Google Таблицах\n🔄 Кэш автоматически обновляется при старте",
-        "HYBRID": "⚡ *Гибридный режим*\n🔄 Автоматическое переключение между режимами\n✅ Данные сохраняются при недоступности Google"
-    }.get(MODE, "")
-    
-    stats_text = (
-        f"📊 *Статистика донорской станции v3.2*\n\n"
-        f"👥 *Всего пользователей:* {total_users}\n"
-        f"📋 *Всего записей:* {total_bookings}\n\n"
-        f"*Квоты по дням:*\n{day_stats_text}\n"
-        f"{mode_info}"
-    )
+        stats_text = (
+            f"📊 *Статистика донорской станции v3.3*\n\n"
+            f"👥 *Всего пользователей:* {total_users}\n"
+            f"📋 *Всего записей:* {total_bookings}\n\n"
+            f"*Квоты по дням:*\n{day_stats_text}\n"
+            f"🔧 *АВТОНОМНЫЙ РЕЖИМ*\n⚠️ *Внимание:* При перезапуске бота статистика сбросится!"
+        )
+    else:
+        # Режимы GOOGLE и HYBRID
+        stats_data = stats_response['data']
+        
+        if isinstance(stats_data, dict):
+            # Получаем данные из ответа
+            total_bookings = stats_data.get("total_bookings", 0)
+            total_users = stats_data.get("total_users", 0)
+            day_stats = stats_data.get("day_stats", {})
+            
+            day_stats_text = ""
+            for day, data in day_stats.items():
+                total_quotas = data.get("total_quotas", 0)
+                quotas = data.get("quotas", {})
+                quotas_text = ""
+                
+                for bg, q in quotas.items():
+                    quotas_text += f"{bg}: {q}, "
+                
+                day_stats_text += f"• *{day}*: всего {total_quotas} мест ({quotas_text.rstrip(', ')})\n"
+            
+            mode_info = {
+                "GOOGLE": "🌐 *РЕЖИМ GOOGLE SCRIPT*\n✅ Данные берутся напрямую из Google Таблиц",
+                "HYBRID": "⚡ *ГИБРИДНЫЙ РЕЖИМ*\n🔄 Автоматическое переключение между режимами"
+            }.get(MODE, "")
+            
+            stats_text = (
+                f"📊 *Статистика донорской станции v3.3*\n\n"
+                f"👥 *Всего пользователей:* {total_users}\n"
+                f"📋 *Всего записей:* {total_bookings}\n\n"
+                f"*Квоты по дням:*\n{day_stats_text}\n"
+                f"{mode_info}"
+            )
+        else:
+            # Если ответ не в ожидаемом формате
+            stats_text = (
+                f"📊 *Статистика донорской станции v3.3*\n\n"
+                f"Статистика загружена из Google Таблиц.\n"
+                f"Данные: {str(stats_data)[:200]}..."
+            )
     
     # Добавляем кнопки администрирования для админов
     if message.from_user.id in ADMIN_IDS:
@@ -1904,7 +1961,7 @@ async def show_main_menu_from_callback(callback: CallbackQuery):
     admin_text = "\n👑 *Вы администратор* - доступны дополнительные функции" if is_admin else ""
     
     await callback.message.edit_text(
-        f"🎯 *Донорская станция v3.2*\n"
+        f"🎯 *Донорская станция v3.3*\n"
         f"{mode_info}\n\n"
         f"👋 Привет, {greeting_name}!{admin_text}\n\n"
         f"Я помогу вам записаться на донорство крови, "
@@ -1923,7 +1980,7 @@ async def process_main_menu_button(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         await callback.answer("Главное меню")
 
-# ========== ЗАПУСК БОТА (ОБНОВЛЕНО) ==========
+# ========== ЗАПУСК БОТА ==========
 async def main():
     """Основная функция запуска бота"""
     # Настройка логирования
@@ -1938,7 +1995,7 @@ async def main():
     from aiogram.client.session.aiohttp import AiohttpSession
     
     print("=" * 60)
-    print("🚀 ЗАПУСК ДОНОРСКОГО БОТА v3.2")
+    print("🚀 ЗАПУСК ДОНОРСКОГО БОТА v3.3")
     print("=" * 60)
     
     # Тестируем соединение с Google Script
@@ -1968,6 +2025,7 @@ async def main():
         print("🌐 Данные хранятся в Google Таблицах")
         print(f"📊 URL: {GOOGLE_SCRIPT_URL}")
         print("🔄 Кэш автоматически обновляется при команде /start")
+        print("📊 Статистика и времена берутся из Google Таблиц")
     elif MODE == "HYBRID":
         print("⚡ Гибридный режим: Google Script + локальное хранилище")
         print("🔄 Автоматическое переключение при ошибках")
@@ -2038,4 +2096,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
