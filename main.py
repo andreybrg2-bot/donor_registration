@@ -1,6 +1,6 @@
 """
 🎯 БОТ ДЛЯ ЗАПИСИ НА ДОНОРСТВО КРОВИ
-Версия: 3.1 (С поддержкой дат, 8 групп крови и очисткой кэша)
+Версия: 3.2 (С поддержкой дат, 8 групп крови и обновлением кэша)
 Автор: AI Assistant
 Дата: 2024
 
@@ -12,6 +12,7 @@
 ✅ Автоматическое обновление доступных дат
 ✅ Кэширование данных
 ✅ Очистка кэша через Google Script
+✅ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ КЭША ПРИ СТАРТЕ
 ✅ ИСПРАВЛЕНА ОШИБКА ТАЙМАУТА СЕССИИ
 """
 
@@ -51,7 +52,7 @@ ADMIN_IDS = [5097581039]  # Замените на ваш Telegram ID
 # Таймаут сессии в секундах (10 минут)
 SESSION_TIMEOUT = 600
 
-# ========== КЛИЕНТ GOOGLE SCRIPT ==========
+# ========== КЛИЕНТ GOOGLE SCRIPT (ОБНОВЛЕНО) ==========
 class GoogleScriptClient:
     """Клиент для работы с Google Apps Script"""
     
@@ -95,20 +96,29 @@ class GoogleScriptClient:
             print(f"[GOOGLE] ❌ Неизвестная ошибка: {str(e)}")
             return {"status": "error", "data": f"Неизвестная ошибка: {str(e)}"}
     
-    def call_api(self, action: str, data: dict = None, user_id: int = None) -> dict:
+    def call_api(self, action: str, data: dict = None, user_id: int = None, force_refresh: bool = False) -> dict:
         """Вызвать API Google Script с кэшированием"""
         if data is None:
             data = {}
-            
-        cache_key = f"{action}_{user_id}_{json.dumps(data, sort_keys=True)}"
         
-        # Проверяем кэш для некоторых действий
-        if action in ["get_available_dates"]:
-            if cache_key in self.cache:
-                cache_age = time.time() - self.cache_time.get(cache_key, 0)
-                if cache_age < 300:  # Кэш на 5 минут
-                    print(f"[GOOGLE] 💾 Используем кэшированные данные для {action}")
-                    return self.cache[cache_key]
+        # Если принудительное обновление - пропускаем кэш
+        if force_refresh:
+            print(f"[GOOGLE] 🔄 Принудительное обновление кэша для {action}")
+            # Очищаем кэш для этого действия
+            cache_keys_to_delete = [k for k in self.cache.keys() if k.startswith(f"{action}_")]
+            for key in cache_keys_to_delete:
+                self.cache.pop(key, None)
+                self.cache_time.pop(key, None)
+        else:
+            cache_key = f"{action}_{user_id}_{json.dumps(data, sort_keys=True)}"
+            
+            # Проверяем кэш для некоторых действий
+            if action in ["get_available_dates"]:
+                if cache_key in self.cache:
+                    cache_age = time.time() - self.cache_time.get(cache_key, 0)
+                    if cache_age < 300:  # Кэш на 5 минут
+                        print(f"[GOOGLE] 💾 Используем кэшированные данные для {action}")
+                        return self.cache[cache_key]
         
         try:
             payload = {"action": action, **data}
@@ -129,8 +139,9 @@ class GoogleScriptClient:
                     result = response.json()
                     print(f"[GOOGLE] ✅ Успешно: {result.get('status')}")
                     
-                    # Сохраняем в кэш
-                    if action in ["get_available_dates"]:
+                    # Сохраняем в кэш (если не принудительное обновление)
+                    if action in ["get_available_dates"] and not force_refresh:
+                        cache_key = f"{action}_{user_id}_{json.dumps(data, sort_keys=True)}"
                         self.cache[cache_key] = result
                         self.cache_time[cache_key] = time.time()
                     
@@ -161,7 +172,7 @@ class LocalStorage:
     
     def __init__(self):
         self.reset_data()
-        print("[LOCAL] 💾 Локальное хранилище инициализировано (v3.1)")
+        print("[LOCAL] 💾 Локальное хранилище инициализировано (v3.2)")
         
     def reset_data(self):
         """Сбросить все данные"""
@@ -225,7 +236,7 @@ class LocalStorage:
         available_dates = []
         
         # Ищем рабочие дни (есть хотя бы одна группа с квотой > 0)
-        for i in range(1, 6):  # Проверяем 30 дней вперед
+        for i in range(1, 31):  # Проверяем 30 дней вперед
             if len(available_dates) >= 6:
                 break
                 
@@ -306,7 +317,7 @@ class LocalStorage:
             }
             
         except ValueError as e:
-            return {"status": "error", "data": f"Неверный формат даты: {date}"}
+            return {"status": "error", "data": f"Неверный формат дата: {date}"}
         except Exception as e:
             return {"status": "error", "data": f"Ошибка: {str(e)}"}
     
@@ -609,14 +620,14 @@ async def timeout_middleware(handler, event, data):
     return await handler(event, data)
 
 # ========== УНИВЕРСАЛЬНЫЙ API (ОБНОВЛЕНО) ==========
-def get_available_dates(user_id: int) -> dict:
+def get_available_dates(user_id: int, force_refresh: bool = False) -> dict:
     """Универсальная функция получения доступных дат"""
     if MODE == "LOCAL":
         return local_storage.get_available_dates(user_id)
     elif MODE == "GOOGLE":
-        return google_client.call_api("get_available_dates", {}, user_id)
+        return google_client.call_api("get_available_dates", {}, user_id, force_refresh)
     elif MODE == "HYBRID":
-        result = google_client.call_api("get_available_dates", {}, user_id)
+        result = google_client.call_api("get_available_dates", {}, user_id, force_refresh)
         
         if result["status"] == "error":
             print(f"[HYBRID] 🔄 Google Script недоступен, переключаемся на локальное хранилище")
@@ -730,6 +741,26 @@ def clear_cache() -> dict:
         return google_client.call_api("clear_cache", {})
     else:
         return {"status": "success", "data": "В локальном режиме кэш очищается автоматически"}
+
+def force_refresh_cache(user_id: int = None) -> dict:
+    """Принудительно обновить кэш данных из Google Таблиц"""
+    if MODE in ["GOOGLE", "HYBRID"]:
+        print(f"[CACHE] 🔄 Принудительное обновление кэша для user_id={user_id}")
+        
+        # Очищаем кэш для получения свежих данных
+        clear_cache_result = clear_cache()
+        if clear_cache_result['status'] != 'success':
+            print(f"[CACHE] ⚠️ Не удалось очистить кэш: {clear_cache_result.get('data', 'unknown error')}")
+        
+        # Запрашиваем свежие данные
+        if user_id:
+            return get_available_dates(user_id, force_refresh=True)
+        else:
+            # Для общего обновления
+            test_user_id = 1  # Можно использовать тестовый ID
+            return get_available_dates(test_user_id, force_refresh=True)
+    else:
+        return {"status": "success", "data": "Локальный режим - кэш не используется"}
 
 # ========== ОГРАНИЧЕНИЕ ЧАСТОТЫ ЗАПРОСОВ ==========
 class RateLimiter:
@@ -914,9 +945,10 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
     
     builder.row(
         InlineKeyboardButton(text="🗑️ Очистить кэш квот", callback_data="admin_clear_cache"),
-        InlineKeyboardButton(text="🔄 Сбросить данные", callback_data="admin_reset")
+        InlineKeyboardButton(text="🔄 Обновить кэш", callback_data="admin_refresh_cache")
     )
     builder.row(
+        InlineKeyboardButton(text="🔄 Сбросить данные", callback_data="admin_reset"),
         InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
     )
     
@@ -942,6 +974,15 @@ async def start_command(message: types.Message, state: FSMContext):
     session_timeout.clear_session(user.id)
     session_timeout.update_activity(user.id)
     
+    # ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ КЭШ ПРИ СТАРТЕ (только в GOOGLE/HYBRID режиме)
+    if MODE in ["GOOGLE", "HYBRID"]:
+        print(f"[CACHE] 🔄 Принудительное обновление кэша при старте для user_id={user.id}")
+        refresh_result = force_refresh_cache(user.id)
+        if refresh_result["status"] == "success":
+            print(f"[CACHE] ✅ Кэш успешно обновлен из Google Таблиц")
+        else:
+            print(f"[CACHE] ⚠️ Не удалось обновить кэш: {refresh_result.get('data', 'unknown error')}")
+    
     greeting_name = user.first_name if user.first_name else "пользователь"
     
     # Информация о режиме
@@ -956,7 +997,7 @@ async def start_command(message: types.Message, state: FSMContext):
     admin_text = "\n👑 *Вы администратор* - доступны дополнительные функции" if is_admin else ""
     
     await message.answer(
-        f"🎯 *Донорская станция v3.1*\n"
+        f"🎯 *Донорская станция v3.2*\n"
         f"{mode_info}\n\n"
         f"👋 Привет, {greeting_name}!{admin_text}\n\n"
         f"Я помогу вам записаться на донорство крови, "
@@ -965,7 +1006,8 @@ async def start_command(message: types.Message, state: FSMContext):
         f"• 📅 Выбор конкретной даты вместо дней недели\n"
         f"• 🩸 8 групп крови вместо 4\n"
         f"• ⏰ Автоматический поиск доступных дат\n"
-        f"• 🗑️ Очистка кэша квот (для администраторов)\n\n"
+        f"• 🗑️ Очистка и обновление кэша квот\n"
+        f"• 🔄 Автоматическое обновление данных при старте\n\n"
         f"*Выберите действие:*",
         parse_mode="Markdown",
         reply_markup=get_main_menu_keyboard()
@@ -1056,7 +1098,7 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
     # Обновляем данные состояния
     await state.update_data(blood_group=blood_group)
     
-    # Получаем доступные даты
+    # Получаем доступные даты (без принудительного обновления, используем кэш)
     response = get_available_dates(user.id)
     
     if response['status'] == 'error':
@@ -1420,7 +1462,7 @@ async def cancel_command(message: types.Message, state: FSMContext):
 async def help_command(message: types.Message):
     """Команда /help"""
     help_text = (
-        "📋 *Помощь по боту v3.1:*\n\n"
+        "📋 *Помощь по боту v3.2:*\n\n"
         "*Основные функции:*\n"
         "• 📋 Записаться на донорство\n"
         "• 🔍 Проверить доступное время\n"
@@ -1432,7 +1474,8 @@ async def help_command(message: types.Message):
         "🩸 *8 групп крови* (A+, A-, B+, B-, AB+, AB-, O+, O-)\n"
         "⚡ *Автоматический поиск* 6 ближайших рабочих дней\n"
         "⏰ *Таймаут сессии* 10 минут\n"
-        "🗑️ *Очистка кэша квот* (для администраторов)\n\n"
+        "🗑️ *Очистка и обновление кэша квот*\n"
+        "🔄 *Автоматическое обновление данных при старте*\n\n"
         "*Правила:*\n"
         "📌 Одна запись в день на пользователя\n"
         "📅 Запись на ближайшие доступные даты\n"
@@ -1441,6 +1484,10 @@ async def help_command(message: types.Message):
         "🔧 *LOCAL* - автономный режим\n"
         "🌐 *GOOGLE* - данные в Google Таблицах\n"
         "⚡ *HYBRID* - автоматическое переключение\n\n"
+        "*Администраторские функции:*\n"
+        "🔄 Обновить кэш из Google Таблиц\n"
+        "🗑️ Очистить кэш квот\n"
+        "🔄 Сбросить все данные\n\n"
         "По вопросам обращайтесь к администратору."
     )
     
@@ -1543,12 +1590,12 @@ async def show_stats(message: types.Message):
     
     mode_info = {
         "LOCAL": "🔧 *Автономный режим*\n⚠️ *Внимание:* При перезапуске бота статистика сбросится!",
-        "GOOGLE": "🌐 *Режим Google Script*\n✅ Данные сохраняются в Google Таблицах",
-        "HYBRID": "⚡ *Гибридный режим*\n🔄 Автоматическое переключение между режимами"
+        "GOOGLE": "🌐 *Режим Google Script*\n✅ Данные сохраняются в Google Таблицах\n🔄 Кэш автоматически обновляется при старте",
+        "HYBRID": "⚡ *Гибридный режим*\n🔄 Автоматическое переключение между режимами\n✅ Данные сохраняются при недоступности Google"
     }.get(MODE, "")
     
     stats_text = (
-        f"📊 *Статистика донорской станции v3.1*\n\n"
+        f"📊 *Статистика донорской станции v3.2*\n\n"
         f"👥 *Всего пользователей:* {total_users}\n"
         f"📋 *Всего записей:* {total_bookings}\n\n"
         f"*Квоты по дням:*\n{day_stats_text}\n"
@@ -1560,9 +1607,10 @@ async def show_stats(message: types.Message):
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(text="🗑️ Очистить кэш квот", callback_data="admin_clear_cache"),
-            InlineKeyboardButton(text="🔄 Сбросить данные", callback_data="admin_reset")
+            InlineKeyboardButton(text="🔄 Обновить кэш", callback_data="admin_refresh_cache")
         )
         builder.row(
+            InlineKeyboardButton(text="🔄 Сбросить данные", callback_data="admin_reset"),
             InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
         )
         reply_markup = builder.as_markup()
@@ -1620,6 +1668,44 @@ async def clear_cache_command(message: types.Message):
         await message.answer(
             f"❌ *Ошибка очистки кэша:* {result['data']}\n\n"
             f"Проверьте подключение к Google Script.",
+            parse_mode="Markdown",
+            reply_markup=get_admin_keyboard()
+        )
+
+async def refresh_cache_command(message: types.Message):
+    """Команда /refresh - обновить кэш из Google Таблиц (только для админов)"""
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer(
+            "⛔ *У вас нет прав для выполнения этой команды.*",
+            parse_mode="Markdown"
+        )
+        return
+    
+    if MODE in ["GOOGLE", "HYBRID"]:
+        # Отправляем сообщение о начале обновления
+        msg = await message.answer("🔄 *Обновление кэша из Google Таблиц...*", parse_mode="Markdown")
+        
+        # Принудительно обновляем кэш
+        result = force_refresh_cache(message.from_user.id)
+        
+        if result["status"] == "success":
+            await msg.edit_text(
+                "✅ *Кэш успешно обновлен из Google Таблиц!*\n\n"
+                "Теперь отображаются актуальные данные.\n"
+                f"Доступно дат: {result['data'].get('count', 0)}",
+                parse_mode="Markdown",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await msg.edit_text(
+                f"❌ *Ошибка обновления кэша:* {result['data']}",
+                parse_mode="Markdown",
+                reply_markup=get_admin_keyboard()
+            )
+    else:
+        await message.answer(
+            "ℹ️ *В локальном режиме кэш не используется.*\n"
+            "Данные берутся напрямую из памяти бота.",
             parse_mode="Markdown",
             reply_markup=get_admin_keyboard()
         )
@@ -1762,6 +1848,32 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
             await callback.answer()
             return
         
+        if callback.data == "admin_refresh_cache":
+            # Проверяем, является ли пользователь админом
+            if callback.from_user.id not in ADMIN_IDS:
+                await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
+                return
+            
+            # Обновляем кэш
+            result = force_refresh_cache(callback.from_user.id)
+            
+            if result['status'] == 'success':
+                await callback.message.edit_text(
+                    "✅ *Кэш успешно обновлен из Google Таблиц!*\n\n"
+                    "Теперь отображаются актуальные данные.\n"
+                    f"Доступно дат: {result['data'].get('count', 0)}",
+                    parse_mode="Markdown",
+                    reply_markup=get_admin_keyboard()
+                )
+            else:
+                await callback.message.edit_text(
+                    f"❌ *Ошибка обновления кэша:* {result['data']}",
+                    parse_mode="Markdown",
+                    reply_markup=get_admin_keyboard()
+                )
+            await callback.answer()
+            return
+        
     except Exception as e:
         print(f"❌ Ошибка в обработке отмены: {e}")
         await callback.message.edit_text(
@@ -1792,7 +1904,7 @@ async def show_main_menu_from_callback(callback: CallbackQuery):
     admin_text = "\n👑 *Вы администратор* - доступны дополнительные функции" if is_admin else ""
     
     await callback.message.edit_text(
-        f"🎯 *Донорская станция v3.1*\n"
+        f"🎯 *Донорская станция v3.2*\n"
         f"{mode_info}\n\n"
         f"👋 Привет, {greeting_name}!{admin_text}\n\n"
         f"Я помогу вам записаться на донорство крови, "
@@ -1826,7 +1938,7 @@ async def main():
     from aiogram.client.session.aiohttp import AiohttpSession
     
     print("=" * 60)
-    print("🚀 ЗАПУСК ДОНОРСКОГО БОТА v3.1")
+    print("🚀 ЗАПУСК ДОНОРСКОГО БОТА v3.2")
     print("=" * 60)
     
     # Тестируем соединение с Google Script
@@ -1855,9 +1967,11 @@ async def main():
     elif MODE == "GOOGLE":
         print("🌐 Данные хранятся в Google Таблицах")
         print(f"📊 URL: {GOOGLE_SCRIPT_URL}")
+        print("🔄 Кэш автоматически обновляется при команде /start")
     elif MODE == "HYBRID":
         print("⚡ Гибридный режим: Google Script + локальное хранилище")
         print("🔄 Автоматическое переключение при ошибках")
+        print("🔄 Кэш автоматически обновляется при команде /start")
     
     print("=" * 60)
     
@@ -1894,6 +2008,7 @@ async def main():
     dp.message.register(stats_command, Command("stats"))
     dp.message.register(reset_command, Command("reset"))
     dp.message.register(clear_cache_command, Command("clearcache"))
+    dp.message.register(refresh_cache_command, Command("refresh"))
     
     # 9. Регистрация callback-запросов
     dp.callback_query.register(process_main_menu_button, F.data == "main_menu")
