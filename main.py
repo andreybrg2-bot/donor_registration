@@ -47,7 +47,7 @@ from aiogram.client.session.aiohttp import AiohttpSession
 TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 
 # Режим работы (LOCAL, GOOGLE, HYBRID)
-MODE = "HYBRID"  # Рекомендуется HYBRID для надежности
+MODE = "GOOGLE"  # Рекомендуется HYBRID для надежности
 
 # URL вашего Google Apps Script (ЗАМЕНИТЕ НА СВОЙ!)
 GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuL_A7CyFHtgvBKKSK74swazQSlj0kwDWY4ITENdOcP-GPMZ1h1JblAEsg4zr3N-a7/exec"
@@ -2180,3 +2180,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
