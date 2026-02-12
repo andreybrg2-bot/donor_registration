@@ -1,6 +1,6 @@
 """
 🎯 БОТ ДЛЯ ЗАПИСИ НА ДОНОРСТВО КРОВИ
-Версия: 3.4 (ИСПРАВЛЕННАЯ СИНХРОНИЗАЦИЯ С GOOGLE ТАБЛИЦАМИ)
+Версия: 3.4.1 (ИСПРАВЛЕНА ОШИБКА ТЕСТА СОЕДИНЕНИЯ)
 Автор: AI Assistant
 Дата: 2024
 
@@ -15,7 +15,7 @@
 ✅ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ КЭША ПРИ СТАРТЕ
 ✅ ИСПРАВЛЕНА СТАТИСТИКА - РАБОТАЕТ С GOOGLE ТАБЛИЦАМИ
 ✅ НОРМАЛИЗАЦИЯ ДАННЫХ ИЗ GOOGLE SCRIPT
-✅ ТЕСТИРОВАНИЕ СОЕДИНЕНИЯ ДЛЯ АДМИНОВ
+✅ ИСПРАВЛЕН ТЕСТ СОЕДИНЕНИЯ ДЛЯ АДМИНОВ
 ✅ СИНХРОНИЗАЦИЯ КВОТ С GOOGLE ТАБЛИЦАМИ
 """
 
@@ -47,7 +47,7 @@ from aiogram.client.session.aiohttp import AiohttpSession
 TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 
 # Режим работы (LOCAL, GOOGLE, HYBRID)
-MODE = "GOOGLE"  # Рекомендуется HYBRID для надежности
+MODE = "HYBRID"  # Рекомендуется HYBRID для надежности
 
 # URL вашего Google Apps Script (ЗАМЕНИТЕ НА СВОЙ!)
 GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuL_A7CyFHtgvBKKSK74swazQSlj0kwDWY4ITENdOcP-GPMZ1h1JblAEsg4zr3N-a7/exec"
@@ -89,7 +89,11 @@ class GoogleScriptClient:
                     return data
                 except json.JSONDecodeError:
                     print(f"[GOOGLE] ❌ Неверный JSON ответ")
-                    return {"status": "error", "data": "Неверный формат ответа", "raw": response.text[:200]}
+                    return {
+                        "status": "error", 
+                        "data": "Неверный формат ответа", 
+                        "raw": response.text[:200]
+                    }
             else:
                 print(f"[GOOGLE] ❌ HTTP ошибка: {response.status_code}")
                 return {"status": "error", "data": f"HTTP ошибка: {response.status_code}"}
@@ -156,7 +160,11 @@ class GoogleScriptClient:
                     return result
                 except json.JSONDecodeError as e:
                     print(f"[GOOGLE] ❌ JSON ошибка: {str(e)}")
-                    return {"status": "error", "data": "Неверный формат ответа от Google Script", "raw": response.text[:200]}
+                    return {
+                        "status": "error", 
+                        "data": "Неверный формат ответа от Google Script", 
+                        "raw": response.text[:200]
+                    }
             else:
                 print(f"[GOOGLE] ❌ HTTP ошибка: {response.status_code}")
                 return {"status": "error", "data": f"HTTP ошибка: {response.status_code}"}
@@ -270,7 +278,7 @@ class LocalStorage:
     
     def __init__(self):
         self.reset_data()
-        print("[LOCAL] 💾 Локальное хранилище инициализировано (v3.4)")
+        print("[LOCAL] 💾 Локальное хранилище инициализировано (v3.4.1)")
         
     def reset_data(self):
         """Сбросить все данные"""
@@ -703,7 +711,7 @@ async def timeout_middleware(handler, event, data):
     
     return await handler(event, data)
 
-# ========== УНИВЕРСАЛЬНЫЙ API (ИСПРАВЛЕНО ДЛЯ GOOGLE ТАБЛИЦ) ==========
+# ========== УНИВЕРСАЛЬНЫЙ API ==========
 def get_available_dates(user_id: int, force_refresh: bool = False) -> dict:
     """Универсальная функция получения доступных дат"""
     if MODE == "LOCAL":
@@ -1048,21 +1056,21 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
     builder.row(
-        InlineKeyboardButton(text="🗑️ Очистить кэш квот", callback_data="admin_clear_cache"),
+        InlineKeyboardButton(text="🗑️ Очистить кэш", callback_data="admin_clear_cache"),
         InlineKeyboardButton(text="🔄 Обновить кэш", callback_data="admin_refresh_cache")
     )
     builder.row(
         InlineKeyboardButton(text="📋 Тест соединения", callback_data="admin_test_connection"),
-        InlineKeyboardButton(text="🔄 Синхронизировать квоты", callback_data="admin_sync_quotas")
+        InlineKeyboardButton(text="🔄 Синхр. квоты", callback_data="admin_sync_quotas")
     )
     builder.row(
         InlineKeyboardButton(text="🔄 Сбросить данные", callback_data="admin_reset"),
-        InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
+        InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")
     )
     
     return builder.as_markup()
 
-# ========== ОСНОВНЫЕ КОМАНДЫ ==========
+# ========== ОБРАБОТЧИКИ КОМАНД ==========
 async def start_command(message: types.Message, state: FSMContext):
     """Команда /start - показывает главное меню"""
     user = message.from_user
@@ -1100,7 +1108,7 @@ async def start_command(message: types.Message, state: FSMContext):
     admin_text = "\n👑 *Вы администратор* - доступны дополнительные функции" if is_admin else ""
     
     await message.answer(
-        f"🎯 *Донорская станция v3.4*\n"
+        f"🎯 *Донорская станция v3.4.1*\n"
         f"{mode_info}\n\n"
         f"👋 Привет, {greeting_name}!{admin_text}\n\n"
         f"Я помогу вам записаться на донорство крови, "
@@ -1112,7 +1120,7 @@ async def start_command(message: types.Message, state: FSMContext):
         f"• 🗑️ Очистка и обновление кэша квот\n"
         f"• 🔄 Автоматическое обновление данных при старте\n"
         f"• 📊 Исправленная статистика из Google Таблиц\n"
-        f"• 🔌 Тестирование соединения для админов\n\n"
+        f"• 🔌 ИСПРАВЛЕН тест соединения для админов\n\n"
         f"*Выберите действие:*",
         parse_mode="Markdown",
         reply_markup=get_main_menu_keyboard()
@@ -1398,10 +1406,18 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
         return
     
     if callback.data == "back_to_date":
+        # Получаем доступные даты заново
+        response = get_available_dates(user.id)
+        available_dates = response['data']['available_dates'] if response['status'] == 'success' else []
+        
+        user_data = await state.get_data()
+        blood_group = user_data.get('blood_group', '')
+        
         await callback.message.edit_text(
-            "📅 *Выберите дату:*",
+            f"📅 *Выберите дату:*\n\n"
+            f"🩸 Группа крови: *{blood_group}*",
             parse_mode="Markdown",
-            reply_markup=get_dates_keyboard([])
+            reply_markup=get_dates_keyboard(available_dates)
         )
         await state.set_state(Form.waiting_for_date)
         await callback.answer()
@@ -1474,14 +1490,15 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     )
     
     if response['status'] == 'error':
+        # Получаем обновленные доступные времена
+        times_response = get_free_times(selected_date, blood_group)
+        times = times_response['data']['times'] if times_response['status'] == 'success' else []
+        
         await callback.message.edit_text(
             f"❌ *Ошибка регистрации:* {response['data']}\n\n"
             f"Попробуйте выбрать другое время.",
             parse_mode="Markdown",
-            reply_markup=get_times_keyboard(
-                user_data.get('available_times', []),
-                2, 3
-            )
+            reply_markup=get_times_keyboard(times, 2, 3)
         )
         await callback.answer()
         return
@@ -1512,7 +1529,7 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("✅ Запись успешно оформлена!")
 
-# ========== НЕОБХОДИМЫЕ ФУНКЦИИ КОМАНД ==========
+# ========== КОМАНДЫ ==========
 async def cancel_command(message: types.Message, state: FSMContext):
     """Команда /cancel - отмена текущего диалога"""
     current_state = await state.get_state()
@@ -1539,7 +1556,7 @@ async def cancel_command(message: types.Message, state: FSMContext):
 async def help_command(message: types.Message):
     """Команда /help"""
     help_text = (
-        "📋 *Помощь по боту v3.4:*\n\n"
+        "📋 *Помощь по боту v3.4.1:*\n\n"
         "*Основные функции:*\n"
         "• 📋 Записаться на донорство\n"
         "• 🔍 Проверить доступное время\n"
@@ -1554,7 +1571,7 @@ async def help_command(message: types.Message):
         "🗑️ *Очистка и обновление кэша квот*\n"
         "🔄 *Автоматическое обновление данных при старте*\n"
         "📊 *ИСПРАВЛЕННАЯ статистика из Google Таблиц*\n"
-        "🔌 *Тестирование соединения для админов*\n\n"
+        "🔌 *ИСПРАВЛЕН тест соединения для админов*\n\n"
         "*Правила:*\n"
         "📌 Одна запись в день на пользователя\n"
         "📅 Запись на ближайшие доступные даты\n"
@@ -1643,11 +1660,11 @@ async def show_my_bookings(message: types.Message, user: types.User):
         )
 
 async def stats_command(message: types.Message):
-    """Команда /stats - показать статистику ИЗ GOOGLE ТАБЛИЦ"""
+    """Команда /stats - показать статистику"""
     await show_stats(message)
 
 async def show_stats(message: types.Message):
-    """Показать статистику ИЗ GOOGLE ТАБЛИЦ"""
+    """Показать статистику"""
     stats_response = get_stats()
     
     if stats_response['status'] == 'error':
@@ -1797,10 +1814,11 @@ async def refresh_cache_command(message: types.Message):
         result = force_refresh_cache(message.from_user.id)
         
         if result["status"] == "success":
+            count = result['data'].get('count', 0) if isinstance(result.get('data'), dict) else 0
             await msg.edit_text(
-                "✅ *Кэш успешно обновлен из Google Таблиц!*\n\n"
-                "Теперь отображаются актуальные данные.\n"
-                f"Доступно дат: {result['data'].get('count', 0)}",
+                f"✅ *Кэш успешно обновлен из Google Таблиц!*\n\n"
+                f"Теперь отображаются актуальные данные.\n"
+                f"Доступно дат: {count}",
                 parse_mode="Markdown",
                 reply_markup=get_admin_keyboard()
             )
@@ -1818,8 +1836,128 @@ async def refresh_cache_command(message: types.Message):
             reply_markup=get_admin_keyboard()
         )
 
+# ========== ОБРАБОТЧИКИ CALLBACK ==========
+async def process_admin_test_connection(callback: CallbackQuery):
+    """Тестирование соединения с Google Script"""
+    try:
+        if callback.from_user.id not in ADMIN_IDS:
+            await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
+            return
+        
+        await callback.answer("🔄 Тестирование соединения...", show_alert=False)
+        
+        # Отправляем сообщение о начале тестирования
+        await callback.message.edit_text(
+            "🔌 *ТЕСТИРОВАНИЕ СОЕДИНЕНИЯ*\n\n"
+            "🔄 Выполняется подключение к Google Script...\n"
+            f"📎 URL: {GOOGLE_SCRIPT_URL[:50]}...\n\n"
+            "⏳ Пожалуйста, подождите...",
+            parse_mode="Markdown",
+            reply_markup=None
+        )
+        
+        # Выполняем тест
+        result = google_client.test_connection()
+        
+        text = "🔌 *ТЕСТ СОЕДИНЕНИЯ С GOOGLE SCRIPT*\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        text += f"📎 *URL:* `{GOOGLE_SCRIPT_URL}`\n"
+        text += f"⏱️ *Таймаут:* {google_client.timeout} сек\n\n"
+        
+        if result['status'] == 'success':
+            text += f"✅ *СТАТУС:* УСПЕШНО\n"
+            text += f"📊 *Ответ:* {result.get('data', {}).get('message', 'OK')}\n"
+            text += f"🕐 *Время:* {datetime.now().strftime('%H:%M:%S')}\n\n"
+            text += f"💡 *Режим работы:* {MODE}\n"
+            text += f"✅ Google Script доступен и отвечает корректно"
+        else:
+            text += f"❌ *СТАТУС:* ОШИБКА\n"
+            text += f"⚠️ *Причина:* {result.get('data', 'Неизвестная ошибка')}\n"
+            text += f"🕐 *Время:* {datetime.now().strftime('%H:%M:%S')}\n\n"
+            text += f"💡 *РЕКОМЕНДАЦИИ:*\n"
+            text += f"• Проверьте URL Google Script\n"
+            text += f"• Опубликуйте скрипт заново как веб-приложение\n"
+            text += f"• Предоставьте доступ 'Все, у кого есть ссылка'\n"
+            text += f"• Проверьте интернет-соединение\n"
+            text += f"• Включите режим HYBRID в настройках\n\n"
+            text += f"📋 *Режим работы:* {MODE}\n"
+            
+            if 'raw' in result:
+                text += f"\n📄 *Ответ сервера:*\n`{result['raw'][:200]}...`"
+        
+        await callback.message.edit_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=get_admin_keyboard()
+        )
+        
+    except Exception as e:
+        print(f"[ADMIN] ❌ Ошибка в тесте соединения: {e}")
+        await callback.message.edit_text(
+            f"❌ *КРИТИЧЕСКАЯ ОШИБКА*\n\n"
+            f"Не удалось выполнить тест соединения.\n"
+            f"Ошибка: {str(e)[:100]}\n\n"
+            f"Проверьте код бота и настройки.",
+            parse_mode="Markdown",
+            reply_markup=get_admin_keyboard()
+        )
+    finally:
+        await callback.answer()
+
+async def process_admin_sync_quotas(callback: CallbackQuery):
+    """Синхронизация квот с Google Таблицами"""
+    try:
+        if callback.from_user.id not in ADMIN_IDS:
+            await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
+            return
+        
+        await callback.answer("🔄 Синхронизация квот...", show_alert=False)
+        
+        # Отправляем сообщение о начале синхронизации
+        await callback.message.edit_text(
+            "🔄 *СИНХРОНИЗАЦИЯ КВОТ*\n\n"
+            "Выполняется загрузка квот из Google Таблиц...\n\n"
+            "⏳ Пожалуйста, подождите...",
+            parse_mode="Markdown",
+            reply_markup=None
+        )
+        
+        result = get_quotas()
+        
+        if result['status'] == 'success':
+            await callback.message.edit_text(
+                "✅ *КВОТЫ УСПЕШНО СИНХРОНИЗИРОВАНЫ!*\n\n"
+                "Локальные квоты обновлены из Google Таблиц.\n"
+                "Теперь отображаются актуальные данные.",
+                parse_mode="Markdown",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await callback.message.edit_text(
+                f"❌ *ОШИБКА СИНХРОНИЗАЦИИ КВОТ*\n\n"
+                f"Причина: {result.get('data', 'Неизвестная ошибка')}\n\n"
+                f"💡 *Рекомендации:*\n"
+                f"• Проверьте подключение к Google Script\n"
+                f"• Выполните тест соединения\n"
+                f"• Проверьте, что скрипт опубликован",
+                parse_mode="Markdown",
+                reply_markup=get_admin_keyboard()
+            )
+        
+    except Exception as e:
+        print(f"[ADMIN] ❌ Ошибка в синхронизации квот: {e}")
+        await callback.message.edit_text(
+            f"❌ *КРИТИЧЕСКАЯ ОШИБКА*\n\n"
+            f"Не удалось выполнить синхронизацию квот.\n"
+            f"Ошибка: {str(e)[:100]}",
+            parse_mode="Markdown",
+            reply_markup=get_admin_keyboard()
+        )
+    finally:
+        await callback.answer()
+
 async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
-    """Обработка отмены записи и админских действий"""
+    """Обработка отмены записи"""
     try:
         session_timeout.update_activity(callback.from_user.id)
         
@@ -1901,17 +2039,24 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
             await callback.answer()
             return
         
-        if callback.data == "main_menu":
-            await show_main_menu_from_callback(callback)
-            await state.clear()
-            await callback.answer()
+    except Exception as e:
+        print(f"❌ Ошибка в обработке отмены: {e}")
+        await callback.message.edit_text(
+            "❌ *Произошла ошибка при обработке запроса.*\n"
+            "Попробуйте позже или обратитесь к администратору.",
+            parse_mode="Markdown",
+            reply_markup=get_main_menu_keyboard()
+        )
+        await callback.answer()
+
+async def process_admin_actions(callback: CallbackQuery):
+    """Обработка административных действий"""
+    try:
+        if callback.from_user.id not in ADMIN_IDS:
+            await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
             return
         
         if callback.data == "admin_reset":
-            if callback.from_user.id not in ADMIN_IDS:
-                await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
-                return
-            
             local_storage.reset_data()
             await callback.message.edit_text(
                 "✅ *Все данные успешно сброшены!*\n\n"
@@ -1920,14 +2065,9 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
                 parse_mode="Markdown",
                 reply_markup=get_admin_keyboard()
             )
-            await callback.answer()
-            return
-        
-        if callback.data == "admin_clear_cache":
-            if callback.from_user.id not in ADMIN_IDS:
-                await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
-                return
+            await callback.answer("✅ Данные сброшены")
             
+        elif callback.data == "admin_clear_cache":
             result = clear_cache()
             
             if result['status'] == 'success':
@@ -1945,20 +2085,16 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
                     reply_markup=get_admin_keyboard()
                 )
             await callback.answer()
-            return
-        
-        if callback.data == "admin_refresh_cache":
-            if callback.from_user.id not in ADMIN_IDS:
-                await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
-                return
             
+        elif callback.data == "admin_refresh_cache":
             result = force_refresh_cache(callback.from_user.id)
             
             if result['status'] == 'success':
+                count = result['data'].get('count', 0) if isinstance(result.get('data'), dict) else 0
                 await callback.message.edit_text(
-                    "✅ *Кэш успешно обновлен из Google Таблиц!*\n\n"
-                    "Теперь отображаются актуальные данные.\n"
-                    f"Доступно дат: {result['data'].get('count', 0)}",
+                    f"✅ *Кэш успешно обновлен из Google Таблиц!*\n\n"
+                    f"Теперь отображаются актуальные данные.\n"
+                    f"Доступно дат: {count}",
                     parse_mode="Markdown",
                     reply_markup=get_admin_keyboard()
                 )
@@ -1969,76 +2105,23 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
                     reply_markup=get_admin_keyboard()
                 )
             await callback.answer()
-            return
-        
-        if callback.data == "admin_test_connection":
-            if callback.from_user.id not in ADMIN_IDS:
-                await callback.answer("⛔ У вас нет прав", show_alert=True)
-                return
             
-            await callback.answer("🔄 Тестирование...", show_alert=False)
-            
-            result = google_client.test_connection()
-            
-            text = "🔌 *ТЕСТ СОЕДИНЕНИЯ С GOOGLE SCRIPT*\n"
-            text += "━━━━━━━━━━━━━━━━━━━━━━━\n"
-            
-            if result['status'] == 'success':
-                text += f"✅ *Статус:* УСПЕШНО\n"
-                text += f"📊 *Ответ:* {result.get('data', {}).get('message', 'OK')}\n"
-                text += f"🌐 *URL:* {GOOGLE_SCRIPT_URL[:50]}...\n"
-            else:
-                text += f"❌ *Статус:* ОШИБКА\n"
-                text += f"⚠️ *Причина:* {result.get('data', 'Неизвестная ошибка')}\n"
-                text += f"\n💡 *Рекомендации:*\n"
-                text += f"• Проверьте URL Google Script\n"
-                text += f"• Опубликуйте скрипт заново\n"
-                text += f"• Проверьте права доступа\n"
-                text += f"• Включите режим HYBRID\n"
-            
-            await callback.message.edit_text(
-                text,
-                parse_mode="Markdown",
-                reply_markup=get_admin_keyboard()
-            )
-            await callback.answer()
-            return
-        
-        if callback.data == "admin_sync_quotas":
-            if callback.from_user.id not in ADMIN_IDS:
-                await callback.answer("⛔ У вас нет прав", show_alert=True)
-                return
-            
-            await callback.answer("🔄 Синхронизация квот...", show_alert=False)
-            
-            result = get_quotas()
-            
-            if result['status'] == 'success':
-                await callback.message.edit_text(
-                    "✅ *Квоты успешно синхронизированы с Google Таблиц!*\n\n"
-                    "Локальные квоты обновлены.",
-                    parse_mode="Markdown",
-                    reply_markup=get_admin_keyboard()
-                )
-            else:
-                await callback.message.edit_text(
-                    f"❌ *Ошибка синхронизации квот:* {result['data']}\n\n"
-                    f"Проверьте подключение к Google Script.",
-                    parse_mode="Markdown",
-                    reply_markup=get_admin_keyboard()
-                )
-            await callback.answer()
-            return
-        
     except Exception as e:
-        print(f"❌ Ошибка в обработке отмены: {e}")
+        print(f"[ADMIN] ❌ Ошибка в admin_actions: {e}")
         await callback.message.edit_text(
-            "❌ *Произошла ошибка при обработке запроса.*\n"
-            "Попробуйте позже или обратитесь к администратору.",
+            f"❌ *Ошибка:* {str(e)[:100]}",
             parse_mode="Markdown",
-            reply_markup=get_main_menu_keyboard()
+            reply_markup=get_admin_keyboard()
         )
         await callback.answer()
+
+async def process_main_menu_button(callback: CallbackQuery, state: FSMContext):
+    """Обработка кнопки 'В главное меню'"""
+    if callback.data == "main_menu":
+        session_timeout.update_activity(callback.from_user.id)
+        await show_main_menu_from_callback(callback)
+        await state.clear()
+        await callback.answer("Главное меню")
 
 async def show_main_menu_from_callback(callback: CallbackQuery):
     """Показать главное меню из callback"""
@@ -2057,7 +2140,7 @@ async def show_main_menu_from_callback(callback: CallbackQuery):
     admin_text = "\n👑 *Вы администратор* - доступны дополнительные функции" if is_admin else ""
     
     await callback.message.edit_text(
-        f"🎯 *Донорская станция v3.4*\n"
+        f"🎯 *Донорская станция v3.4.1*\n"
         f"{mode_info}\n\n"
         f"👋 Привет, {greeting_name}!{admin_text}\n\n"
         f"Я помогу вам записаться на донорство крови, "
@@ -2066,14 +2149,6 @@ async def show_main_menu_from_callback(callback: CallbackQuery):
         parse_mode="Markdown",
         reply_markup=get_main_menu_keyboard()
     )
-
-async def process_main_menu_button(callback: CallbackQuery, state: FSMContext):
-    """Обработка кнопки 'В главное меню'"""
-    if callback.data == "main_menu":
-        session_timeout.update_activity(callback.from_user.id)
-        await show_main_menu_from_callback(callback)
-        await state.clear()
-        await callback.answer("Главное меню")
 
 # ========== ЗАПУСК БОТА ==========
 async def main():
@@ -2084,7 +2159,7 @@ async def main():
     )
     
     print("=" * 60)
-    print("🚀 ЗАПУСК ДОНОРСКОГО БОТА v3.4")
+    print("🚀 ЗАПУСК ДОНОРСКОГО БОТА v3.4.1")
     print("=" * 60)
     
     if MODE in ["GOOGLE", "HYBRID"]:
@@ -2092,7 +2167,7 @@ async def main():
         test_result = google_client.test_connection()
         
         if test_result["status"] == "success":
-            print(f"✅ Google Script доступен: {test_result['data'].get('message', 'OK')}")
+            print(f"✅ Google Script доступен: {test_result.get('data', {}).get('message', 'OK')}")
             
             print("🔄 Синхронизация квот...")
             quotas_result = get_quotas()
@@ -2101,7 +2176,7 @@ async def main():
                     local_storage.sync_quotas_from_google(quotas_result['data'])
                     print("✅ Квоты синхронизированы")
         else:
-            print(f"⚠️ Google Script недоступен: {test_result['data']}")
+            print(f"⚠️ Google Script недоступен: {test_result.get('data', 'Неизвестная ошибка')}")
             
             if MODE == "GOOGLE":
                 print("❌ Режим GOOGLE выбран, но сервис недоступен!")
@@ -2127,9 +2202,11 @@ async def main():
         print("🔄 Автоматическое переключение при ошибках")
         print("🔄 Кэш автоматически обновляется при команде /start")
         print("📊 Статистика нормализуется для отображения")
+        print("🔌 ИСПРАВЛЕН тест соединения для админов")
     
     print("=" * 60)
     
+    # Создаем SSL-контекст для обхода проблем с сертификатами
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
@@ -2144,8 +2221,10 @@ async def main():
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     
+    # Регистрируем middleware
     dp.update.middleware(timeout_middleware)
     
+    # Регистрируем команды
     dp.message.register(start_command, Command("start"))
     dp.message.register(cancel_command, Command("cancel"))
     dp.message.register(help_command, Command("help"))
@@ -2155,12 +2234,18 @@ async def main():
     dp.message.register(clear_cache_command, Command("clearcache"))
     dp.message.register(refresh_cache_command, Command("refresh"))
     
+    # Регистрируем callback-запросы
     dp.callback_query.register(process_main_menu_button, F.data == "main_menu")
     dp.callback_query.register(process_main_menu, F.data.startswith("main_"))
     dp.callback_query.register(process_blood_group, Form.waiting_for_blood_group)
     dp.callback_query.register(process_date, Form.waiting_for_date)
     dp.callback_query.register(process_time, Form.waiting_for_time)
-    dp.callback_query.register(process_cancel_booking)
+    dp.callback_query.register(process_cancel_booking, F.data.startswith("cancel_"))
+    
+    # Регистрируем админские callback-запросы - ВАЖНО: отдельные обработчики!
+    dp.callback_query.register(process_admin_test_connection, F.data == "admin_test_connection")
+    dp.callback_query.register(process_admin_sync_quotas, F.data == "admin_sync_quotas")
+    dp.callback_query.register(process_admin_actions, F.data.in_(["admin_reset", "admin_clear_cache", "admin_refresh_cache"]))
     
     print("✅ Бот инициализирован и готов к работе!")
     print("📱 Отправьте /start в Telegram для начала работы")
@@ -2180,4 +2265,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
+    
