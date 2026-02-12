@@ -1737,22 +1737,21 @@ async def show_stats(message: types.Message):
         "GOOGLE": "🌐 *РЕЖИМ GOOGLE SCRIPT*",
         "HYBRID": "⚡ *ГИБРИДНЫЙ РЕЖИМ*"
     }.get(MODE, "")
-   
-     # Определяем текст для дня и группы крови заранее, чтобы избежать обратных слешей внутри f-выражений
-     day_display = day_stats_text if day_stats_text else '• Нет данных\n'
-     blood_display = blood_stats_text if blood_stats_text else '• Нет данных\n'
-   
-stats_text = (
-    f"📊 *Статистика донорской станции v3.5*\n\n"
-    f"👥 *Всего пользователей:* {total_users}\n"
-    f"📋 *Всего записей:* {total_bookings}\n"
-    f"📅 *Популярный день:* {most_popular_day}\n"
-    f"🩸 *Популярная группа:* {most_popular_blood}\n\n"
-    f"{quota_info}\n"
-    f"*Записи по дням:*\n{day_display}"
-    f"*Записи по группам крови:*\n{blood_display}"
-    f"{mode_info}"
-)
+    # Определяем текст для дня и группы крови заранее, чтобы избежать обратных слешей внутри f-выражений
+    day_display = day_stats_text if day_stats_text else '• Нет данных\n'
+    blood_display = blood_stats_text if blood_stats_text else '• Нет данных\n'
+    
+    stats_text = (
+        f"📊 *Статистика донорской станции v3.5*\n\n"
+        f"👥 *Всего пользователей:* {total_users}\n"
+        f"📋 *Всего записей:* {total_bookings}\n"
+        f"📅 *Популярный день:* {most_popular_day}\n"
+        f"🩸 *Популярная группа:* {most_popular_blood}\n\n"
+        f"{quota_info}\n"
+        f"*Записи по дням:*\n{day_display}"
+        f"*Записи по группам крови:*\n{blood_display}"
+        f"{mode_info}"
+    )
     
     if message.from_user.id in ADMIN_IDS:
         builder = InlineKeyboardBuilder()
