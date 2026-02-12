@@ -1,6 +1,6 @@
 """
 🤖 БОТ-ТЕСТЕР СОЕДИНЕНИЯ С GOOGLE SCRIPT
-Версия: 1.0
+Версия: 1.1 (Адаптированная под main4-1.py)
 Автор: AI Assistant
 
 Этот бот выполняет диагностику подключения к Google Script
@@ -32,8 +32,9 @@ from aiogram.client.session.aiohttp import AiohttpSession
 TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"  # Тот же токен
 
 # URL вашего Google Apps Script для тестирования
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxRKLqENEaCBdx74tqRKLDZkYZphppXkRMReRUV0kyQ1hTCENQTrHdzecDhbs0szCJZ/exec"
-                     
+# ⚠️ ВАЖНО: После обновления кода скрипта создайте НОВОЕ развертывание и вставьте URL сюда!
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuL_A7CyFHtgvBKKSK74swazQSlj0kwDWY4ITENdOcP-GPMZ1h1JblAEsg4zr3N-a7/exec"
+
 # ID администраторов
 ADMIN_IDS = [5097581039]  # Ваш Telegram ID
 
@@ -64,7 +65,7 @@ class GoogleScriptTester:
         # Тест 3: HTTP POST (action=test)
         results["tests"]["http_post_test"] = self.test_http_post_test()
         
-        # Тест 4: HTTP POST (get_stats)
+        # Тест 4: HTTP POST (get_stats) - АДАПТИРОВАНО ПОД main4-1.py
         results["tests"]["http_post_stats"] = self.test_http_post_stats()
         
         # Тест 5: HTTP POST (get_quotas)
@@ -202,9 +203,12 @@ class GoogleScriptTester:
         return result
     
     def test_http_post_stats(self) -> Dict[str, Any]:
-        """Тест 4: HTTP POST с action=get_stats"""
+        """
+        Тест 4: HTTP POST с action=get_stats
+        АДАПТИРОВАНО ПОД СТРУКТУРУ ОТВЕТА ИЗ main4-1.py
+        """
         result = {
-            "name": "HTTP POST (get_stats)",
+            "name": "HTTP POST (get_stats) - адаптировано под main4-1",
             "status": "error",
             "details": [],
             "response_data": None
@@ -225,52 +229,96 @@ class GoogleScriptTester:
                     
                     if data.get('status') == 'success':
                         result["status"] = "success"
-                        result["details"].append("✅ Статистика получена")
+                        result["details"].append("✅ Статистика успешно получена")
                         
-                        # Анализируем данные статистики
-                        if 'data' in data:
-                            stats_data = data['data']
-                            if isinstance(stats_data, dict):
-                                total_bookings = stats_data.get('total_bookings', 0)
-                                total_users = stats_data.get('total_users', 0)
-                                result["details"].append(f"   Всего записей: {total_bookings}")
-                                result["details"].append(f"   Всего пользователей: {total_users}")
+                        # Извлекаем данные статистики
+                        stats_data = data.get('data', {})
+                        if isinstance(stats_data, dict):
+                            # ОСНОВНЫЕ ПОКАЗАТЕЛИ ИЗ main4-1.py
+                            total_bookings = stats_data.get('total_bookings', 0)
+                            total_users = stats_data.get('total_users', 0)
+                            most_popular_day = stats_data.get('most_popular_day', 'не определен')
+                            most_popular_blood = stats_data.get('most_popular_blood_group', 'не определена')
+                            
+                            result["details"].append(f"   📊 Всего записей: {total_bookings}")
+                            result["details"].append(f"   👥 Всего пользователей: {total_users}")
+                            result["details"].append(f"   📅 Популярный день: {most_popular_day}")
+                            result["details"].append(f"   🩸 Популярная группа: {most_popular_blood}")
+                            
+                            # АНАЛИЗ КВОТ ИЗ quota_stats
+                            quota_stats = stats_data.get('quota_stats', {})
+                            if isinstance(quota_stats, dict):
+                                total_quota = quota_stats.get('totalQuota', 0)
+                                total_used = quota_stats.get('totalUsed', 0)
+                                remaining = total_quota - total_used
                                 
-                                # Проверяем квоты
-                                day_stats = stats_data.get('day_stats', {})
-                                if day_stats:
-                                    non_zero = 0
-                                    for day, day_data in day_stats.items():
-                                        quotas = day_data.get('quotas', {})
-                                        for bg, q in quotas.items():
-                                            if q > 0:
-                                                non_zero += 1
-                                    
-                                    if non_zero > 0:
-                                        result["details"].append(f"✅ Квоты не нулевые (найдено {non_zero} ненулевых)")
-                                    else:
-                                        result["details"].append("⚠️ Все квоты равны нулю")
+                                result["details"].append(f"   📋 Общая квота: {total_quota}")
+                                result["details"].append(f"   ✅ Использовано: {total_used}")
+                                result["details"].append(f"   ⏳ Осталось: {remaining}")
+                                
+                                # Проверяем ненулевые квоты по дням
+                                by_day = quota_stats.get('byDay', {})
+                                non_zero_days = 0
+                                if isinstance(by_day, dict):
+                                    for day, day_data in by_day.items():
+                                        if isinstance(day_data, dict):
+                                            total = day_data.get('total', 0)
+                                            if total > 0:
+                                                non_zero_days += 1
+                                
+                                if non_zero_days > 0:
+                                    result["details"].append(f"   ✅ Дней с квотами: {non_zero_days}")
                                 else:
-                                    result["details"].append("⚠️ Нет данных по дням")
-                            else:
-                                result["details"].append(f"⚠️ Неожиданный формат данных: {type(stats_data).__name__}")
+                                    result["details"].append("   ⚠️ Нет дней с ненулевыми квотами")
+                            
+                            # СТАТИСТИКА ПО ДНЯМ (day_stats - это счетчики, не объекты с quotas)
+                            day_stats = stats_data.get('day_stats', {})
+                            if isinstance(day_stats, dict):
+                                # Показываем топ-3 дня по записям
+                                sorted_days = sorted(day_stats.items(), key=lambda x: x[1], reverse=True)[:3]
+                                if sorted_days:
+                                    result["details"].append("   📈 Топ дней по записям:")
+                                    for day, count in sorted_days:
+                                        result["details"].append(f"     - {day}: {count} зап.")
+                            
+                            # СТАТИСТИКА ПО ГРУППАМ КРОВИ
+                            bg_stats = stats_data.get('blood_group_stats', {})
+                            if isinstance(bg_stats, dict):
+                                # Показываем топ-3 группы
+                                sorted_bg = sorted(bg_stats.items(), key=lambda x: x[1], reverse=True)[:3]
+                                if sorted_bg:
+                                    result["details"].append("   🩸 Топ групп крови:")
+                                    for bg, count in sorted_bg:
+                                        result["details"].append(f"     - {bg}: {count} зап.")
+                        else:
+                            result["details"].append(f"⚠️ Неожиданный формат данных: {type(stats_data).__name__}")
                     else:
-                        result["details"].append(f"⚠️ Ошибка: {data.get('data', 'неизвестно')[:100]}")
+                        error_msg = data.get('data', 'неизвестная ошибка')
+                        result["details"].append(f"⚠️ Ошибка API: {error_msg[:100]}")
+                        result["status"] = "warning"
                         
                 except json.JSONDecodeError:
-                    result["details"].append("❌ Не JSON ответ")
+                    result["details"].append("❌ Ответ не в формате JSON")
+                    result["details"].append(f"   Первые 200 символов: {response.text[:200]}")
             else:
-                result["details"].append(f"⚠️ HTTP {response.status_code}")
+                result["details"].append(f"⚠️ HTTP статус: {response.status_code}")
                 
+        except requests.exceptions.Timeout:
+            result["details"].append("❌ Таймаут запроса статистики")
+        except requests.exceptions.ConnectionError:
+            result["details"].append("❌ Ошибка соединения при запросе статистики")
         except Exception as e:
             result["details"].append(f"❌ Ошибка: {str(e)[:100]}")
         
         return result
     
     def test_http_post_quotas(self) -> Dict[str, Any]:
-        """Тест 5: HTTP POST с action=get_quotas"""
+        """
+        Тест 5: HTTP POST с action=get_quotas
+        АДАПТИРОВАНО ПОД СТРУКТУРУ ОТВЕТА ИЗ main4-1.py
+        """
         result = {
-            "name": "HTTP POST (get_quotas)",
+            "name": "HTTP POST (get_quotas) - адаптировано под main4-1",
             "status": "error",
             "details": [],
             "response_data": None
@@ -291,33 +339,61 @@ class GoogleScriptTester:
                     
                     if data.get('status') == 'success':
                         result["status"] = "success"
-                        result["details"].append("✅ Квоты получены")
+                        result["details"].append("✅ Квоты успешно получены")
                         
+                        # Извлекаем данные квот
                         quotas_data = data.get('data', {})
                         if isinstance(quotas_data, dict):
-                            days_count = len(quotas_data)
-                            result["details"].append(f"   Дней с квотами: {days_count}")
+                            quotas_info = quotas_data.get('quotas', {})
                             
-                            # Проверяем наличие ненулевых квот
-                            non_zero = 0
-                            for day, day_quotas in quotas_data.items():
-                                if isinstance(day_quotas, dict):
-                                    for bg, q in day_quotas.items():
-                                        if isinstance(q, (int, float)) and q > 0:
-                                            non_zero += 1
-                            
-                            if non_zero > 0:
-                                result["details"].append(f"✅ Найдено {non_zero} ненулевых квот")
+                            if isinstance(quotas_info, dict):
+                                # Общая статистика
+                                total_quota = quotas_info.get('totalQuota', 0)
+                                total_used = quotas_info.get('totalUsed', 0)
+                                
+                                result["details"].append(f"   📊 Общая квота: {total_quota}")
+                                result["details"].append(f"   ✅ Использовано: {total_used}")
+                                result["details"].append(f"   ⏳ Осталось: {total_quota - total_used}")
+                                
+                                # Детали по дням
+                                by_day = quotas_info.get('byDay', {})
+                                if isinstance(by_day, dict):
+                                    working_days = 0
+                                    for day, day_data in by_day.items():
+                                        if isinstance(day_data, dict):
+                                            total = day_data.get('total', 0)
+                                            used = day_data.get('used', 0)
+                                            if total > 0:
+                                                working_days += 1
+                                                # Показываем первые 3 дня для примера
+                                                if working_days <= 3:
+                                                    result["details"].append(f"   📅 {day}: {used}/{total} (ост. {total - used})")
+                                    
+                                    result["details"].append(f"   📆 Рабочих дней: {working_days}")
+                                
+                                # Квоты по группам крови (выборочно)
+                                message = quotas_data.get('message', '')
+                                if message:
+                                    result["details"].append(f"   📝 {message}")
                             else:
-                                result["details"].append("⚠️ Все квоты равны нулю")
+                                result["details"].append("⚠️ Нет данных о квотах в ответе")
+                        else:
+                            result["details"].append(f"⚠️ Неожиданный формат квот: {type(quotas_data).__name__}")
                     else:
-                        result["details"].append(f"⚠️ Ошибка: {data.get('data', 'неизвестно')[:100]}")
+                        error_msg = data.get('data', 'неизвестная ошибка')
+                        result["details"].append(f"⚠️ Ошибка API: {error_msg[:100]}")
+                        result["status"] = "warning"
                         
                 except json.JSONDecodeError:
-                    result["details"].append("❌ Не JSON ответ")
+                    result["details"].append("❌ Ответ не в формате JSON")
+                    result["details"].append(f"   Первые 200 символов: {response.text[:200]}")
             else:
-                result["details"].append(f"⚠️ HTTP {response.status_code}")
+                result["details"].append(f"⚠️ HTTP статус: {response.status_code}")
                 
+        except requests.exceptions.Timeout:
+            result["details"].append("❌ Таймаут запроса квот")
+        except requests.exceptions.ConnectionError:
+            result["details"].append("❌ Ошибка соединения при запросе квот")
         except Exception as e:
             result["details"].append(f"❌ Ошибка: {str(e)[:100]}")
         
@@ -436,7 +512,10 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📊 Только статистика", callback_data="test_stats")
     )
     builder.row(
-        InlineKeyboardButton(text="📝 Код для Google Script", callback_data="show_code"),
+        InlineKeyboardButton(text="🔍 Только квоты", callback_data="test_quotas"),
+        InlineKeyboardButton(text="📝 Код для Google Script", callback_data="show_code")
+    )
+    builder.row(
         InlineKeyboardButton(text="❓ Помощь", callback_data="help")
     )
     
@@ -512,48 +591,43 @@ def format_test_results(results: Dict[str, Any]) -> str:
         text.append("   3. Скопируйте новый URL")
     
     if results['tests']['http_post_stats']['status'] == 'success':
+        text.append("✅ Статистика успешно получена и проанализирована")
         stats_data = results['tests']['http_post_stats'].get('response_data', {})
         if stats_data:
             data = stats_data.get('data', {})
             if isinstance(data, dict):
-                bookings = data.get('total_bookings', 0)
-                users = data.get('total_users', 0)
-                if bookings == 0 and users == 0:
-                    text.append("⚠️ Статистика получена, но все значения нулевые")
-                    text.append("   Проверьте, есть ли данные в Google Таблице")
+                total_quota = data.get('quota_stats', {}).get('totalQuota', 0)
+                if total_quota == 0:
+                    text.append("⚠️ Квоты в статистике равны нулю")
+                    text.append("   Установите ненулевые квоты в Google Таблице")
     else:
         text.append("❌ Не удалось получить статистику")
-        text.append("   Добавьте обработчик get_stats в Google Script")
+        text.append("   Проверьте наличие обработчика get_stats в скрипте")
     
     if results['tests']['http_post_quotas']['status'] == 'success':
+        text.append("✅ Квоты успешно получены")
         quotas_data = results['tests']['http_post_quotas'].get('response_data', {})
         if quotas_data:
             data = quotas_data.get('data', {})
-            if isinstance(data, dict):
-                all_zero = True
-                for day, quotas in data.items():
-                    if isinstance(quotas, dict):
-                        for q in quotas.values():
-                            if isinstance(q, (int, float)) and q > 0:
-                                all_zero = False
-                                break
-                
-                if all_zero:
-                    text.append("⚠️ Квоты получены, но все равны нулю")
-                    text.append("   Установите ненулевые квоты в Google Таблице")
+            quotas_info = data.get('quotas', {})
+            total_quota = quotas_info.get('totalQuota', 0)
+            if total_quota == 0:
+                text.append("⚠️ Все квоты равны нулю")
+                text.append("   Установите ненулевые квоты в Google Таблице")
     else:
         text.append("❌ Не удалось получить квоты")
+        text.append("   Убедитесь, что скрипт опубликован с актуальной версией")
         text.append("   Добавьте обработчик get_quotas в Google Script")
     
     text.append("")
     text.append("=" * 50)
     text.append("📋 ДЛЯ АДМИНИСТРАТОРА:")
     text.append("=" * 50)
-    text.append("1. Если все тесты успешны - бот должен работать")
-    text.append("2. Если тест POST не работает - переопубликуйте скрипт")
-    text.append("3. Если статистика нулевая - заполните Google Таблицу")
-    text.append("4. Если квоты нулевые - установите значения > 0")
-    text.append("5. В основном боте установите MODE = 'HYBRID'")
+    text.append("1. ✅ Если все тесты успешны - бот должен работать")
+    text.append("2. 🔄 Если get_quotas не работает - ПЕРЕОПУБЛИКУЙТЕ СКРИПТ")
+    text.append("3. 📊 Если статистика нулевая - заполните Google Таблицу")
+    text.append("4. ⚙️ В основном боте установите MODE = 'HYBRID'")
+    text.append("5. 🔑 Проверьте, что URL получен из НОВОГО развертывания")
     text.append("")
     text.append("=" * 50)
     
@@ -575,12 +649,14 @@ async def start_command(message: types.Message):
         return
     
     await message.answer(
-        "🔌 БОТ-ТЕСТЕР GOOGLE SCRIPT\n"
-        "==============================\n\n"
+        "🔌 БОТ-ТЕСТЕР GOOGLE SCRIPT v1.1\n"
+        "=================================\n\n"
         f"👋 Привет, {user.first_name}!\n\n"
         "Этот бот выполняет диагностику подключения к Google Script.\n"
         "Все тесты используют ТОЛЬКО ОБЫЧНЫЙ ТЕКСТ (без Markdown).\n\n"
         f"📎 Тестируемый URL:\n{GOOGLE_SCRIPT_URL}\n\n"
+        "⚠️ ВАЖНО: После обновления кода скрипта\n"
+        "   создавайте НОВОЕ развертывание!\n\n"
         "Выберите действие:",
         reply_markup=get_main_keyboard()
     )
@@ -598,8 +674,8 @@ async def process_callback(callback: CallbackQuery):
     
     if action == "back_to_main":
         await callback.message.edit_text(
-            "🔌 БОТ-ТЕСТЕР GOOGLE SCRIPT\n"
-            "==============================\n\n"
+            "🔌 БОТ-ТЕСТЕР GOOGLE SCRIPT v1.1\n"
+            "=================================\n\n"
             f"👋 Привет, {user.first_name}!\n\n"
             f"📎 URL: {GOOGLE_SCRIPT_URL}\n\n"
             "Выберите действие:",
@@ -613,7 +689,7 @@ async def process_callback(callback: CallbackQuery):
             "📎 ТЕСТИРУЕМЫЙ URL\n"
             "==============================\n\n"
             f"{GOOGLE_SCRIPT_URL}\n\n"
-            "Этот URL должен вести на опубликованное веб-приложение Google Apps Script.\n\n"
+            "⚠️ ВАЖНО: Этот URL должен быть от НОВОГО развертывания!\n\n"
             "Как получить правильный URL:\n"
             "1. Откройте редактор Google Apps Script\n"
             "2. Нажмите 'Развернуть' → 'Новое развертывание'\n"
@@ -642,8 +718,8 @@ async def process_callback(callback: CallbackQuery):
             "Тест 1/7: Проверка формата URL...\n"
             "Тест 2/7: HTTP GET запрос...\n"
             "Тест 3/7: HTTP POST (action=test)...\n"
-            "Тест 4/7: HTTP POST (get_stats)...\n"
-            "Тест 5/7: HTTP POST (get_quotas)...\n"
+            "Тест 4/7: HTTP POST (get_stats) - адаптировано...\n"
+            "Тест 5/7: HTTP POST (get_quotas) - адаптировано...\n"
             "Тест 6/7: SSL сертификат...\n"
             "Тест 7/7: Разные методы отправки...",
             reply_markup=None
@@ -706,7 +782,8 @@ async def process_callback(callback: CallbackQuery):
     
     if action == "test_stats":
         await callback.message.edit_text(
-            "🔄 Тестирование статистики (action=get_stats)...",
+            "🔄 Тестирование статистики (action=get_stats)...\n"
+            "(Адаптировано под main4-1.py)",
             reply_markup=None
         )
         
@@ -744,6 +821,48 @@ async def process_callback(callback: CallbackQuery):
         )
         await callback.answer()
         return
+    
+    if action == "test_quotas":
+        await callback.message.edit_text(
+            "🔄 Тестирование квот (action=get_quotas)...\n"
+            "(Адаптировано под main4-1.py)",
+            reply_markup=None
+        )
+        
+        result = tester.test_http_post_quotas()
+        
+        text = []
+        text.append("=" * 50)
+        text.append("📋 ТЕСТ КВОТ (GET_QUOTAS)")
+        text.append("=" * 50)
+        text.append("")
+        
+        if result['status'] == 'success':
+            text.append("✅ СТАТУС: УСПЕХ")
+        elif result['status'] == 'warning':
+            text.append("⚠️ СТАТУС: ПРЕДУПРЕЖДЕНИЕ")
+        else:
+            text.append("❌ СТАТУС: ОШИБКА")
+        
+        text.append("")
+        for detail in result['details']:
+            text.append(detail)
+        
+        if result.get('response_data'):
+            text.append("")
+            text.append("📦 Данные квот:")
+            data_str = json.dumps(result['response_data'], indent=2, ensure_ascii=False)[:500]
+            text.append(data_str)
+        
+        text.append("")
+        text.append("=" * 50)
+        
+        await callback.message.edit_text(
+            "\n".join(text),
+            reply_markup=get_back_keyboard()
+        )
+        await callback.answer()
+        return
 
 async def show_google_script_code(message: types.Message):
     """Показать рекомендуемый код для Google Script"""
@@ -751,123 +870,30 @@ async def show_google_script_code(message: types.Message):
 📝 РЕКОМЕНДУЕМЫЙ КОД ДЛЯ GOOGLE APPS SCRIPT
 ============================================
 
-Скопируйте этот код в редактор Google Apps Script:
+⚠️ У ВАС УЖЕ ЕСТЬ ПОЛНЫЙ КОД В main4-1.py
+   Этот код - только минимальная версия для проверки соединения.
 
-------------------------------------------------------------------------
-function doGet(e) {
-  return handleRequest(e.parameter);
-}
+📌 ВАЖНО: Ваш скрипт (main4-1.py) содержит ВСЕ необходимые обработчики:
+   ✅ get_quotas - ПОЛНОСТЬЮ РЕАЛИЗОВАН
+   ✅ get_stats - ПОЛНОСТЬЮ РЕАЛИЗОВАН
+   ✅ register, cancel_booking и т.д.
 
-function doPost(e) {
-  var params;
-  try {
-    params = JSON.parse(e.postData.contents);
-  } catch(error) {
-    params = e.parameter;
-  }
-  return handleRequest(params);
-}
+🔧 ЧТОБЫ ИСПРАВИТЬ ОШИБКУ "Неизвестное действие get_quotas":
 
-function handleRequest(params) {
-  var action = params.action;
-  
-  // ТЕСТОВЫЙ ENDPOINT
-  if (action === "test") {
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        status: "success",
-        data: {
-          message: "Соединение работает!",
-          time: new Date().toISOString(),
-          version: "1.0"
-        }
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  
-  // СТАТИСТИКА
-  if (action === "get_stats") {
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        status: "success",
-        data: {
-          total_bookings: 125,
-          total_users: 87,
-          day_stats: {
-            "понедельник": {
-              quotas: {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
-              total_quotas: 48
-            },
-            "вторник": {
-              quotas: {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
-              total_quotas: 48
-            },
-            "среда": {
-              quotas: {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
-              total_quotas: 48
-            },
-            "четверг": {
-              quotas: {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
-              total_quotas: 48
-            },
-            "пятница": {
-              quotas: {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
-              total_quotas: 48
-            },
-            "суббота": {
-              quotas: {"A+": 8, "A-": 4, "B+": 8, "B-": 4, "AB+": 3, "AB-": 2, "O+": 8, "O-": 4},
-              total_quotas: 37
-            },
-            "воскресенье": {
-              quotas: {"A+": 8, "A-": 4, "B+": 8, "B-": 4, "AB+": 3, "AB-": 2, "O+": 8, "O-": 4},
-              total_quotas: 37
-            }
-          }
-        }
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  
-  // КВОТЫ
-  if (action === "get_quotas") {
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        status: "success",
-        data: {
-          "понедельник": {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
-          "вторник": {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
-          "среда": {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
-          "четверг": {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
-          "пятница": {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
-          "суббота": {"A+": 8, "A-": 4, "B+": 8, "B-": 4, "AB+": 3, "AB-": 2, "O+": 8, "O-": 4},
-          "воскресенье": {"A+": 8, "A-": 4, "B+": 8, "B-": 4, "AB+": 3, "AB-": 2, "O+": 8, "O-": 4}
-        }
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  
-  // ПО УМОЛЧАНИЮ
-  return ContentService
-    .createTextOutput(JSON.stringify({
-      status: "error",
-      data: "Неизвестное действие: " + action
-    }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-------------------------------------------------------------------------
+1. Откройте редактор Google Apps Script
+2. Убедитесь, что вставлен ПОЛНЫЙ код из main4-1.py
+3. Нажмите "Сохранить" 💾
+4. Нажмите "Развернуть" → "Управление развертываниями"
+5. Нажмите "Новое развертывание" 🚀
+6. Выберите тип: "Веб-приложение"
+7. Доступ: "Все, у кого есть ссылка"
+8. Нажмите "Развернуть"
+9. СКОПИРУЙТЕ НОВЫЙ URL!
+10. Вставьте его в настройки бота и в этот тестер
 
-📌 ИНСТРУКЦИЯ ПО ПУБЛИКАЦИИ:
-1. Вставьте код в редактор
-2. Нажмите "Сохранить" 💾
-3. Нажмите "Развернуть" → "Новое развертывание"
-4. Выберите тип "Веб-приложение"
-5. Доступ: "Все, у кого есть ссылка"
-6. Нажмите "Развернуть"
-7. Скопируйте сгенерированный URL
-8. Вставьте URL в настройки бота
-
-⚠️ ВАЖНО: После каждого изменения кода
-   нужно создавать НОВОЕ развертывание!
+⚠️ ПРЕДУПРЕЖДЕНИЕ:
+   Старое развертывание НЕ ОБНОВЛЯЕТСЯ автоматически!
+   Каждое изменение кода требует НОВОГО развертывания!
 """
     
     await message.edit_text(
@@ -878,48 +904,43 @@ function handleRequest(params) {
 async def show_help(message: types.Message):
     """Показать справку"""
     help_text = """
-❓ ПОМОЩЬ ПО БОТУ-ТЕСТЕРУ
-========================
+❓ ПОМОЩЬ ПО БОТУ-ТЕСТЕРУ v1.1
+==============================
 
 🔍 ЧТО ДЕЛАЕТ ЭТОТ БОТ:
 • Проверяет доступность Google Script
-• Тестирует различные методы запросов
-• Анализирует ответы от сервера
+• Тестирует все endpoints из main4-1.py
+• Анализирует структуру ответов
 • Выявляет проблемы в настройках
 
 📋 ДОСТУПНЫЕ ТЕСТЫ:
 1. Полный тест - все проверки сразу
-2. POST test - проверка базового эндпоинта
+2. POST test - базовая проверка соединения
 3. Статистика - проверка get_stats
 4. Квоты - проверка get_quotas
 
-⚠️ ВОЗМОЖНЫЕ ПРОБЛЕМЫ:
+⚠️ ТИПИЧНЫЕ ПРОБЛЕМЫ:
 
-❌ "Неверный формат URL"
-   Решение: Скопируйте URL из опубликованного веб-приложения
+❌ "Неизвестное действие get_quotas"
+   Причина: запущена старая версия скрипта
+   Решение: создайте НОВОЕ развертывание!
+
+❌ "int object has no attribute get"
+   Причина: тестер ожидал старую структуру
+   Решение: УСТРАНЕНО в версии 1.1!
+   Теперь тестер понимает формат main4-1.py
 
 ❌ "Таймаут запроса"
    Решение: Проверьте интернет, переопубликуйте скрипт
-
-❌ "Не JSON ответ"
-   Решение: Добавьте .setMimeType(ContentService.MimeType.JSON)
-
-❌ "Статус error"
-   Решение: Добавьте обработчик для этого action в скрипт
 
 ❌ "Все квоты равны нулю"
    Решение: Установите значения квот в Google Таблице
 
 ✅ ПОСЛЕ УСПЕШНОГО ТЕСТИРОВАНИЯ:
-1. Скопируйте рабочий URL
+1. Скопируйте URL из НОВОГО развертывания
 2. Вставьте его в основной бот
 3. Установите MODE = "HYBRID"
 4. Перезапустите основного бота
-
-📞 Если проблемы сохраняются:
-   • Проверьте код Google Script
-   • Создайте новое развертывание
-   • Проверьте права доступа
 """
     
     await message.edit_text(
@@ -936,13 +957,16 @@ async def main():
     )
     
     print("=" * 60)
-    print("🤖 ЗАПУСК БОТА-ТЕСТЕРА GOOGLE SCRIPT v1.0")
+    print("🤖 ЗАПУСК БОТА-ТЕСТЕРА GOOGLE SCRIPT v1.1")
     print("=" * 60)
     print(f"📎 Тестируемый URL: {GOOGLE_SCRIPT_URL}")
     print(f"👑 Администраторы: {ADMIN_IDS}")
     print("=" * 60)
-    print("⚠️ Этот бот использует ТОЛЬКО ОБЫЧНЫЙ ТЕКСТ")
-    print("⚠️ НЕТ Markdown форматирования")
+    print("⚠️ ВЕРСИЯ 1.1 - АДАПТИРОВАНА ПОД main4-1.py")
+    print("✅ Поддерживает get_quotas и get_stats в новом формате")
+    print("=" * 60)
+    print("📌 ВАЖНО: После обновления кода скрипта")
+    print("   создавайте НОВОЕ развертывание!")
     print("=" * 60)
     
     # SSL контекст для обхода проблем с сертификатами
@@ -982,4 +1006,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
