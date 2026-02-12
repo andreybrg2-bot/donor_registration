@@ -44,7 +44,7 @@ TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 MODE = "GOOGLE"
 
 # URL вашего Google Apps Script
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxRKLqENEaCBdx74tqRKLDZkYZphppXkRMReRUV0kyQ1hTCENQTrHdzecDhbs0szCJZ/exec"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuL_A7CyFHtgvBKKSK74swazQSlj0kwDWY4ITENdOcP-GPMZ1h1JblAEsg4zr3N-a7/exec"
 
 # ID администраторов
 ADMIN_IDS = [5097581039]
@@ -1737,18 +1737,22 @@ async def show_stats(message: types.Message):
         "GOOGLE": "🌐 *РЕЖИМ GOOGLE SCRIPT*",
         "HYBRID": "⚡ *ГИБРИДНЫЙ РЕЖИМ*"
     }.get(MODE, "")
-    
-    stats_text = (
-        f"📊 *Статистика донорской станции v3.5*\n\n"
-        f"👥 *Всего пользователей:* {total_users}\n"
-        f"📋 *Всего записей:* {total_bookings}\n"
-        f"📅 *Популярный день:* {most_popular_day}\n"
-        f"🩸 *Популярная группа:* {most_popular_blood}\n\n"
-        f"{quota_info}\n"
-        f"*Записи по дням:*\n{day_stats_text if day_stats_text else '• Нет данных\n'}\n"
-        f"*Записи по группам крови:*\n{blood_stats_text if blood_stats_text else '• Нет данных\n'}\n"
-        f"{mode_info}"
-    )
+   
+# Определяем текст для дня и группы крови заранее, чтобы избежать обратных слешей внутри f-выражений
+day_display = day_stats_text if day_stats_text else '• Нет данных\n'
+blood_display = blood_stats_text if blood_stats_text else '• Нет данных\n'
+   
+stats_text = (
+    f"📊 *Статистика донорской станции v3.5*\n\n"
+    f"👥 *Всего пользователей:* {total_users}\n"
+    f"📋 *Всего записей:* {total_bookings}\n"
+    f"📅 *Популярный день:* {most_popular_day}\n"
+    f"🩸 *Популярная группа:* {most_popular_blood}\n\n"
+    f"{quota_info}\n"
+    f"*Записи по дням:*\n{day_display}"
+    f"*Записи по группам крови:*\n{blood_display}"
+    f"{mode_info}"
+)
     
     if message.from_user.id in ADMIN_IDS:
         builder = InlineKeyboardBuilder()
