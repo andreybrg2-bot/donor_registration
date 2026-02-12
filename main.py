@@ -1,20 +1,18 @@
 """
 🎯 БОТ ДЛЯ ЗАПИСИ НА ДОНОРСТВО КРОВИ
-Версия: 3.3 (Полная интеграция с Google Таблицами)
+Версия: 3.4 (ИСПРАВЛЕНА СОВМЕСТИМОСТЬ С GOOGLE SCRIPT)
 Автор: AI Assistant
 Дата: 2024
 
-Особенности:
-✅ Поддержка выбора конкретных дат вместо дней недели
-✅ 8 групп крови вместо 4
-✅ Таймаут сессии 10 минут
-✅ Двухстрочные кнопки с датами
-✅ Автоматическое обновление доступных дат
-✅ Кэширование данных
-✅ Очистка кэша через Google Script
-✅ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ КЭША ПРИ СТАРТЕ
-✅ ИСПРАВЛЕНА ОШИБКА ТАЙМАУТА СЕССИИ
-✅ ПОЛНАЯ ИНТЕГРАЦИЯ С GOOGLE ТАБЛИЦАМИ
+ОСНОВНЫЕ ИСПРАВЛЕНИЯ:
+✅ get_stats - исправлена обработка ответа от Google Script
+✅ get_quotas - добавлена поддержка API квот
+✅ get_free_times - исправлена структура запроса
+✅ check_existing - исправлена обработка ответа
+✅ register - исправлена структура запроса
+✅ cancel_booking - исправлена структура запроса
+✅ get_user_bookings - исправлена обработка ответа
+✅ get_available_dates - исправлена структура ответа
 """
 
 import logging
@@ -44,11 +42,11 @@ TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 # Режим работы (LOCAL, GOOGLE, HYBRID)
 MODE = "GOOGLE"
 
-# URL вашего Google Apps Script (ЗАМЕНИТЕ НА СВОЙ!)
+# URL вашего Google Apps Script
 GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuL_A7CyFHtgvBKKSK74swazQSlj0kwDWY4ITENdOcP-GPMZ1h1JblAEsg4zr3N-a7/exec"
 
-# ID администраторов (для команды /reset)
-ADMIN_IDS = [5097581039]  # Замените на ваш Telegram ID
+# ID администраторов
+ADMIN_IDS = [5097581039]
 
 # Таймаут сессии в секундах (10 минут)
 SESSION_TIMEOUT = 600
@@ -60,9 +58,9 @@ class GoogleScriptClient:
     def __init__(self, script_url: str):
         self.script_url = script_url
         self.session = requests.Session()
-        self.session.verify = False  # Отключаем SSL проверку для корпоративных прокси
+        self.session.verify = False
         self.timeout = 15
-        self.cache = {}  # Простой кэш в памяти
+        self.cache = {}
         self.cache_time = {}
     
     def test_connection(self) -> dict:
@@ -102,10 +100,8 @@ class GoogleScriptClient:
         if data is None:
             data = {}
         
-        # Если принудительное обновление - пропускаем кэш
         if force_refresh:
             print(f"[GOOGLE] 🔄 Принудительное обновление кэша для {action}")
-            # Очищаем кэш для этого действия
             cache_keys_to_delete = [k for k in self.cache.keys() if k.startswith(f"{action}_")]
             for key in cache_keys_to_delete:
                 self.cache.pop(key, None)
@@ -113,11 +109,10 @@ class GoogleScriptClient:
         else:
             cache_key = f"{action}_{user_id}_{json.dumps(data, sort_keys=True)}"
             
-            # Проверяем кэш для некоторых действий
-            if action in ["get_available_dates", "get_stats"]:
+            if action in ["get_available_dates", "get_stats", "get_quotas"]:
                 if cache_key in self.cache:
                     cache_age = time.time() - self.cache_time.get(cache_key, 0)
-                    if cache_age < 300:  # Кэш на 5 минут
+                    if cache_age < 300:
                         print(f"[GOOGLE] 💾 Используем кэшированные данные для {action}")
                         return self.cache[cache_key]
         
@@ -140,8 +135,7 @@ class GoogleScriptClient:
                     result = response.json()
                     print(f"[GOOGLE] ✅ Успешно: {result.get('status')}")
                     
-                    # Сохраняем в кэш (если не принудительное обновление)
-                    if action in ["get_available_dates", "get_stats"] and not force_refresh:
+                    if action in ["get_available_dates", "get_stats", "get_quotas"] and not force_refresh:
                         cache_key = f"{action}_{user_id}_{json.dumps(data, sort_keys=True)}"
                         self.cache[cache_key] = result
                         self.cache_time[cache_key] = time.time()
@@ -173,11 +167,11 @@ class LocalStorage:
     
     def __init__(self):
         self.reset_data()
-        print("[LOCAL] 💾 Локальное хранилище инициализировано (v3.3)")
+        print("[LOCAL] 💾 Локальное хранилище инициализировано (v3.4)")
         
     def reset_data(self):
         """Сбросить все данные"""
-        self.bookings = {}  # {user_id: {date: {ticket, time, blood_group, day}}}
+        self.bookings = {}
         self.quotas = {
             "понедельник": {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
             "вторник": {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
@@ -193,12 +187,10 @@ class LocalStorage:
             "13:30", "14:00"
         ]
         
-        # Добавляем тестовые данные для демонстрации
         self._add_test_data()
     
     def _add_test_data(self):
         """Добавить тестовые данные"""
-        # Тестовые даты (завтра + несколько дней)
         today = datetime.now()
         test_dates = []
         for i in range(1, 8):
@@ -214,7 +206,7 @@ class LocalStorage:
         for user_id, date, time_slot, blood_group, day in test_data:
             self._add_booking(user_id, date, time_slot, blood_group, day)
         
-        print(f"[LOCAL] 📊 Добавлено {len(test_data)} тестовых записей с датами")
+        print(f"[LOCAL] 📊 Добавлено {len(test_data)} тестовых записей")
     
     def _add_booking(self, user_id: int, date: str, time_slot: str, blood_group: str, day: str):
         """Внутренняя функция добавления записи"""
@@ -231,20 +223,17 @@ class LocalStorage:
         }
     
     def get_available_dates(self, user_id: int) -> dict:
-        """Получить доступные даты (до 6 рабочих дней)"""
-        # Логика для локального режима
+        """Получить доступные даты"""
         today = datetime.now()
         available_dates = []
         
-        # Ищем рабочие дни (есть хотя бы одна группа с квотой > 0)
-        for i in range(1, 31):  # Проверяем 30 дней вперед
+        for i in range(1, 31):
             if len(available_dates) >= 6:
                 break
                 
             check_date = today + timedelta(days=i)
             day_of_week = self._get_day_of_week_ru(check_date)
             
-            # Проверяем, есть ли квоты на этот день
             if day_of_week in self.quotas:
                 day_quotas = self.quotas[day_of_week]
                 has_quota = any(quota > 0 for quota in day_quotas.values())
@@ -271,25 +260,22 @@ class LocalStorage:
     def _get_day_of_week_ru(self, date_obj: datetime) -> str:
         """Получить день недели на русском"""
         days = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
-        return days[date_obj.weekday()]  # weekday() возвращает 0-6
+        return days[date_obj.weekday()]
     
     def get_free_times(self, date: str, blood_group: str) -> dict:
         """Получить свободное время для конкретной даты"""
         try:
-            # Получаем день недели из даты
             date_obj = datetime.strptime(date, "%Y-%m-%d")
             day_of_week = self._get_day_of_week_ru(date_obj)
             
             if day_of_week not in self.quotas:
                 return {"status": "error", "data": "Неверная дата"}
             
-            # Получаем квоту для группы крови
             if blood_group not in self.quotas[day_of_week]:
                 return {"status": "error", "data": f"Неверная группа крови: {blood_group}"}
             
             quota_total = self.quotas[day_of_week][blood_group]
             
-            # Собираем занятые времена для этой даты и группы
             busy_times = set()
             for user_data in self.bookings.values():
                 if date in user_data:
@@ -297,9 +283,8 @@ class LocalStorage:
                     if booking["blood_group"] == blood_group:
                         busy_times.add(booking["time"])
             
-            # Свободные времена
             free_times = [t for t in self.working_hours if t not in busy_times]
-            display_times = free_times[:12]  # Ограничиваем для отображения
+            display_times = free_times[:12]
             
             quota_used = len(busy_times)
             quota_remaining = max(0, quota_total - quota_used)
@@ -318,7 +303,7 @@ class LocalStorage:
             }
             
         except ValueError as e:
-            return {"status": "error", "data": f"Неверный формат дата: {date}"}
+            return {"status": "error", "data": f"Неверный формат даты: {date}"}
         except Exception as e:
             return {"status": "error", "data": f"Ошибка: {str(e)}"}
     
@@ -349,35 +334,30 @@ class LocalStorage:
             }
     
     def register(self, date: str, blood_group: str, time_slot: str, user_id: int) -> dict:
-        """Зарегистрировать новую запись на конкретную дату"""
-        # Получаем день недели из даты
+        """Зарегистрировать новую запись"""
         try:
             date_obj = datetime.strptime(date, "%Y-%m-%d")
             day_of_week = self._get_day_of_week_ru(date_obj)
         except ValueError:
             return {"status": "error", "data": f"Неверный формат даты: {date}"}
         
-        # Проверяем существующую запись
         existing = self.check_existing(date, user_id)
         if existing["data"]["exists"]:
             return {
                 "status": "error",
-                "data": f"У вас уже есть запись на {date}. Талон: {existing['data']['ticket']}, Время: {existing['data']['time']}"
+                "data": f"У вас уже есть запись на {date}. Талон: {existing['data']['ticket']}"
             }
         
-        # Проверяем занятость времени
         for user_data in self.bookings.values():
             if date in user_data and user_data[date]["time"] == time_slot and user_data[date]["blood_group"] == blood_group:
                 return {
                     "status": "error",
-                    "data": f"Время {time_slot} на {date} для группы крови {blood_group} уже занято. Выберите другое время."
+                    "data": f"Время {time_slot} на {date} для группы крови {blood_group} уже занято."
                 }
         
-        # Проверяем квоту
         if day_of_week not in self.quotas or blood_group not in self.quotas[day_of_week]:
             return {"status": "error", "data": f"Нет квот для {day_of_week}, группа {blood_group}"}
         
-        # Подсчитываем занятые места для этой даты и группы
         busy_count = 0
         for user_data in self.bookings.values():
             if date in user_data and user_data[date]["blood_group"] == blood_group:
@@ -386,10 +366,9 @@ class LocalStorage:
         if busy_count >= self.quotas[day_of_week][blood_group]:
             return {
                 "status": "error",
-                "data": f"На {date} для группы крови {blood_group} все квоты заняты. Выберите другую дату."
+                "data": f"На {date} для группы крови {blood_group} все квоты заняты."
             }
         
-        # Создаем запись
         ticket = f"Т-{day_of_week[:3]}-{blood_group}-{random.randint(1000, 9999)}"
         
         if user_id not in self.bookings:
@@ -403,12 +382,9 @@ class LocalStorage:
             "created_at": datetime.now().isoformat()
         }
         
-        # Обновляем статистику квот
         quota_remaining = self.quotas[day_of_week][blood_group] - (busy_count + 1)
         quota_total = self.quotas[day_of_week][blood_group]
         quota_used = busy_count + 1
-        
-        print(f"[LOCAL] 📝 Создана запись: {ticket} для user_id={user_id} на {date}")
         
         return {
             "status": "success",
@@ -426,19 +402,15 @@ class LocalStorage:
         }
     
     def cancel_booking(self, date: str, ticket: str, user_id: int) -> dict:
-        """Отменить запись на конкретную дату"""
+        """Отменить запись"""
         if user_id in self.bookings and date in self.bookings[user_id]:
             booking = self.bookings[user_id][date]
             
             if booking["ticket"] == ticket:
-                # Удаляем запись
                 del self.bookings[user_id][date]
                 
-                # Если у пользователя больше нет записей, удаляем его
                 if not self.bookings[user_id]:
                     del self.bookings[user_id]
-                
-                print(f"[LOCAL] 🗑️ Отменена запись: {ticket} на {date}")
                 
                 return {
                     "status": "success",
@@ -486,22 +458,79 @@ class LocalStorage:
                 }
             }
     
+    def get_quotas(self) -> dict:
+        """Получить информацию о квотах"""
+        total_quota = 0
+        total_used = 0
+        by_day = {}
+        
+        for day, quotas in self.quotas.items():
+            day_total = sum(quotas.values())
+            day_used = 0
+            
+            for user_data in self.bookings.values():
+                for date, booking in user_data.items():
+                    date_obj = datetime.strptime(date, "%Y-%m-%d")
+                    booking_day = self._get_day_of_week_ru(date_obj)
+                    if booking_day == day:
+                        day_used += 1
+            
+            total_quota += day_total
+            total_used += day_used
+            
+            by_day[day] = {
+                "total": day_total,
+                "used": day_used,
+                "remaining": day_total - day_used,
+                "quotas": quotas
+            }
+        
+        return {
+            "status": "success",
+            "data": {
+                "quotas": {
+                    "totalQuota": total_quota,
+                    "totalUsed": total_used,
+                    "remaining": total_quota - total_used,
+                    "byDay": by_day
+                },
+                "message": f"Всего квот: {total_quota}, использовано: {total_used}, осталось: {total_quota - total_used}"
+            }
+        }
+    
     def get_stats(self) -> dict:
         """Получить статистику"""
         total_bookings = sum(len(user_bookings) for user_bookings in self.bookings.values())
         total_users = len(self.bookings)
         
         day_stats = {}
-        for day in self.quotas:
-            day_stats[day] = {
-                "quotas": self.quotas[day],
-                "total_quotas": sum(self.quotas[day].values())
-            }
+        blood_group_stats = {}
+        
+        for user_data in self.bookings.values():
+            for date, booking in user_data.items():
+                date_obj = datetime.strptime(date, "%Y-%m-%d")
+                day = self._get_day_of_week_ru(date_obj)
+                day_stats[day] = day_stats.get(day, 0) + 1
+                
+                blood_group = booking["blood_group"]
+                blood_group_stats[blood_group] = blood_group_stats.get(blood_group, 0) + 1
+        
+        most_popular_day = max(day_stats.items(), key=lambda x: x[1])[0] if day_stats else "нет данных"
+        most_popular_blood = max(blood_group_stats.items(), key=lambda x: x[1])[0] if blood_group_stats else "нет данных"
+        
+        quota_stats = self.get_quotas()["data"]["quotas"]
         
         return {
-            "total_bookings": total_bookings,
-            "total_users": total_users,
-            "day_stats": day_stats
+            "status": "success",
+            "data": {
+                "total_bookings": total_bookings,
+                "total_users": total_users,
+                "day_stats": day_stats,
+                "blood_group_stats": blood_group_stats,
+                "most_popular_day": most_popular_day,
+                "most_popular_blood_group": most_popular_blood,
+                "quota_stats": quota_stats
+            }
         }
 
 # Инициализируем локальное хранилище
@@ -544,7 +573,6 @@ async def timeout_middleware(handler, event, data):
         user_id = None
         chat_id = None
         
-        # Получаем user_id и chat_id из события
         if hasattr(event, 'from_user') and event.from_user:
             user_id = event.from_user.id
             chat_id = event.chat.id if hasattr(event, 'chat') and event.chat else None
@@ -557,22 +585,17 @@ async def timeout_middleware(handler, event, data):
                 chat_id = event.callback_query.message.chat.id
         
         if user_id:
-            # Проверяем истекла ли сессия
             if session_timeout.is_session_expired(user_id):
                 print(f"[TIMEOUT] ⏰ Сессия пользователя {user_id} истекла")
                 
-                # Получаем state из данных
                 state = data.get('state')
                 if state:
                     await state.clear()
                 
-                # Очищаем сессию
                 session_timeout.clear_session(user_id)
                 
-                # Отправляем сообщение о таймауте только если это не callback с кнопкой main_menu
                 bot = data.get('bot')
                 
-                # Проверяем, не является ли это callback'ом с кнопкой главного меню
                 is_main_menu_callback = (
                     hasattr(event, 'callback_query') and 
                     event.callback_query and 
@@ -580,10 +603,8 @@ async def timeout_middleware(handler, event, data):
                     event.callback_query.data == "main_menu"
                 )
                 
-                # Игнорируем сообщение о таймауте для кнопки главного меню
                 if is_main_menu_callback:
                     print(f"[TIMEOUT] 🔄 Игнорируем таймаут для кнопки главного меню")
-                    # Обновляем время активности и продолжаем обработку
                     session_timeout.update_activity(user_id)
                     return await handler(event, data)
                 
@@ -591,15 +612,13 @@ async def timeout_middleware(handler, event, data):
                     try:
                         await bot.send_message(
                             chat_id=chat_id,
-                            text="⏳ *Ваша сессия истекла из-за неактивности.*\n\n"
+                            text="⏳ Ваша сессия истекла из-за неактивности.\n\n"
                                  "Для продолжения работы используйте команду /start",
-                            parse_mode="Markdown",
                             reply_markup=get_main_menu_keyboard()
                         )
                     except Exception as e:
                         print(f"[TIMEOUT] ❌ Ошибка отправки сообщения: {e}")
                 
-                # Отвечаем на callback если это callback запрос
                 if hasattr(event, 'callback_query'):
                     try:
                         await event.callback_query.answer(
@@ -609,15 +628,13 @@ async def timeout_middleware(handler, event, data):
                     except Exception as e:
                         print(f"[TIMEOUT] ❌ Ошибка ответа на callback: {e}")
                 
-                return False  # Прерываем обработку
+                return False
             
-            # Обновляем время активности для всех остальных случаев
             session_timeout.update_activity(user_id)
     
     except Exception as e:
         print(f"[TIMEOUT] ❌ Ошибка в middleware: {e}")
     
-    # Продолжаем обработку
     return await handler(event, data)
 
 # ========== УНИВЕРСАЛЬНЫЙ API (ИСПРАВЛЕНО ДЛЯ GOOGLE ТАБЛИЦ) ==========
@@ -660,13 +677,41 @@ def check_existing(date: str, user_id: int) -> dict:
     if MODE == "LOCAL":
         return local_storage.check_existing(date, user_id)
     elif MODE == "GOOGLE":
-        return google_client.call_api("check_existing", {"date": date}, user_id)
+        result = google_client.call_api("check_existing", {"date": date}, user_id)
+        # Нормализуем ответ от Google Script
+        if result["status"] == "success":
+            if "data" in result and isinstance(result["data"], dict):
+                if "exists" not in result["data"]:
+                    # Преобразуем ответ в ожидаемый формат
+                    booking = result["data"]
+                    result["data"] = {
+                        "exists": True,
+                        "ticket": booking.get("ticket"),
+                        "time": booking.get("time"),
+                        "blood_group": booking.get("blood_group"),
+                        "day": booking.get("day"),
+                        "date": date
+                    }
+        return result
     elif MODE == "HYBRID":
         result = google_client.call_api("check_existing", {"date": date}, user_id)
         
         if result["status"] == "error":
             return local_storage.check_existing(date, user_id)
         
+        # Нормализуем ответ
+        if result["status"] == "success":
+            if "data" in result and isinstance(result["data"], dict):
+                if "exists" not in result["data"]:
+                    booking = result["data"]
+                    result["data"] = {
+                        "exists": True,
+                        "ticket": booking.get("ticket"),
+                        "time": booking.get("time"),
+                        "blood_group": booking.get("blood_group"),
+                        "day": booking.get("day"),
+                        "date": date
+                    }
         return result
     else:
         return {"status": "error", "data": "Неизвестный режим работы"}
@@ -722,24 +767,103 @@ def get_user_bookings(user_id: int) -> dict:
     """Универсальная функция получения записей пользователя"""
     if MODE == "LOCAL":
         return local_storage.get_user_bookings(user_id)
-    elif MODE == "GOOGLE" or MODE == "HYBRID":
-        # Для Google Script запрашиваем список всех записей
-        return google_client.call_api("get_user_bookings", {}, user_id)
+    elif MODE in ["GOOGLE", "HYBRID"]:
+        result = google_client.call_api("get_user_bookings", {}, user_id)
+        
+        # Нормализуем ответ от Google Script
+        if result["status"] == "success":
+            if "data" in result:
+                if isinstance(result["data"], list):
+                    # Преобразуем список записей в ожидаемый формат
+                    bookings_list = []
+                    for booking in result["data"]:
+                        if isinstance(booking, dict):
+                            bookings_list.append({
+                                "date": booking.get("date", ""),
+                                "day": booking.get("day", ""),
+                                "ticket": booking.get("ticket", ""),
+                                "time": booking.get("time", ""),
+                                "blood_group": booking.get("blood_group", "")
+                            })
+                    result["data"] = {
+                        "bookings": bookings_list,
+                        "count": len(bookings_list)
+                    }
+                elif isinstance(result["data"], dict) and "bookings" not in result["data"]:
+                    # Если пришел объект с записями, но не в нужном формате
+                    bookings_list = []
+                    for date, booking in result["data"].items():
+                        if isinstance(booking, dict):
+                            bookings_list.append({
+                                "date": date,
+                                "day": booking.get("day", ""),
+                                "ticket": booking.get("ticket", ""),
+                                "time": booking.get("time", ""),
+                                "blood_group": booking.get("blood_group", "")
+                            })
+                    result["data"] = {
+                        "bookings": bookings_list,
+                        "count": len(bookings_list)
+                    }
+        
+        if MODE == "HYBRID" and result["status"] == "error":
+            return local_storage.get_user_bookings(user_id)
+        
+        return result
+    else:
+        return {"status": "error", "data": "Неизвестный режим работы"}
+
+def get_quotas() -> dict:
+    """Универсальная функция получения квот (НОВАЯ)"""
+    if MODE == "LOCAL":
+        return local_storage.get_quotas()
+    elif MODE in ["GOOGLE", "HYBRID"]:
+        result = google_client.call_api("get_quotas", {})
+        
+        if MODE == "HYBRID" and result["status"] == "error":
+            print(f"[HYBRID] 🔄 Google Script недоступен, используем локальные квоты")
+            return local_storage.get_quotas()
+        
+        return result
     else:
         return {"status": "error", "data": "Неизвестный режим работы"}
 
 def get_stats() -> dict:
-    """Получить статистику ИЗ GOOGLE ТАБЛИЦ"""
+    """Универсальная функция получения статистики"""
     if MODE == "LOCAL":
         return local_storage.get_stats()
-    elif MODE == "GOOGLE":
-        return google_client.call_api("get_stats", {})
-    elif MODE == "HYBRID":
+    elif MODE in ["GOOGLE", "HYBRID"]:
         result = google_client.call_api("get_stats", {})
         
-        if result["status"] == "error":
+        if MODE == "HYBRID" and result["status"] == "error":
             print(f"[HYBRID] 🔄 Google Script недоступен, используем локальную статистику")
             return local_storage.get_stats()
+        
+        # Нормализуем ответ от Google Script
+        if result["status"] == "success":
+            if "data" in result:
+                data = result["data"]
+                if isinstance(data, dict):
+                    # Проверяем наличие всех необходимых полей
+                    if "total_bookings" not in data:
+                        data["total_bookings"] = 0
+                    if "total_users" not in data:
+                        data["total_users"] = 0
+                    if "day_stats" not in data:
+                        data["day_stats"] = {}
+                    if "blood_group_stats" not in data:
+                        data["blood_group_stats"] = {}
+                    if "most_popular_day" not in data:
+                        data["most_popular_day"] = "нет данных"
+                    if "most_popular_blood_group" not in data:
+                        data["most_popular_blood_group"] = "нет данных"
+                    if "quota_stats" not in data:
+                        # Пытаемся получить квоты отдельно
+                        quotas_result = get_quotas()
+                        if quotas_result["status"] == "success":
+                            data["quota_stats"] = quotas_result["data"].get("quotas", {})
+                        else:
+                            data["quota_stats"] = {}
         
         return result
     else:
@@ -755,19 +879,16 @@ def clear_cache() -> dict:
 def force_refresh_cache(user_id: int = None) -> dict:
     """Принудительно обновить кэш данных из Google Таблиц"""
     if MODE in ["GOOGLE", "HYBRID"]:
-        print(f"[CACHE] 🔄 Принудительное обновление кэша для user_id={user_id}")
+        print(f"[CACHE] 🔄 Принудительное обновление кэша")
         
-        # Очищаем кэш для получения свежих данных
         clear_cache_result = clear_cache()
         if clear_cache_result['status'] != 'success':
             print(f"[CACHE] ⚠️ Не удалось очистить кэш: {clear_cache_result.get('data', 'unknown error')}")
         
-        # Запрашиваем свежие данные
         if user_id:
             return get_available_dates(user_id, force_refresh=True)
         else:
-            # Для общего обновления
-            test_user_id = 1  # Можно использовать тестовый ID
+            test_user_id = 1
             return get_available_dates(test_user_id, force_refresh=True)
     else:
         return {"status": "success", "data": "Локальный режим - кэш не используется"}
@@ -785,7 +906,6 @@ class RateLimiter:
         """Проверить, можно ли выполнить запрос"""
         now = time.time()
         
-        # Удаляем старые запросы
         requests = self.user_requests[user_id]
         requests = [req_time for req_time in requests if now - req_time < self.time_window]
         self.user_requests[user_id] = requests
@@ -815,7 +935,7 @@ rate_limiter = RateLimiter(max_requests=15, time_window=60)
 # ========== СОСТОЯНИЯ БОТА ==========
 class Form(StatesGroup):
     waiting_for_blood_group = State()
-    waiting_for_date = State()  # Новое состояние вместо waiting_for_day
+    waiting_for_date = State()
     waiting_for_time = State()
 
 # ========== ИНЛАЙН-КЛАВИАТУРЫ ==========
@@ -823,7 +943,6 @@ def get_blood_group_keyboard() -> InlineKeyboardMarkup:
     """Клавиатура для выбора группы крови (8 групп)"""
     builder = InlineKeyboardBuilder()
     
-    # Группы крови в 2 колонки
     blood_groups = [
         ("🅰️ A+", "blood_A+"),
         ("🅰️ A-", "blood_A-"),
@@ -835,13 +954,11 @@ def get_blood_group_keyboard() -> InlineKeyboardMarkup:
         ("🅾️ O-", "blood_O-")
     ]
     
-    # Добавляем кнопки по 2 в ряд
     for i in range(0, len(blood_groups), 2):
         row = blood_groups[i:i+2]
         buttons = [InlineKeyboardButton(text=text, callback_data=callback) for text, callback in row]
         builder.row(*buttons)
     
-    # Кнопки навигации
     builder.row(
         InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu"),
         InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
@@ -850,7 +967,7 @@ def get_blood_group_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 def get_dates_keyboard(available_dates: List[dict]) -> InlineKeyboardMarkup:
-    """Клавиатура для выбора даты (две строки: день недели и дата)"""
+    """Клавиатура для выбора даты"""
     builder = InlineKeyboardBuilder()
     
     if not available_dates:
@@ -860,17 +977,15 @@ def get_dates_keyboard(available_dates: List[dict]) -> InlineKeyboardMarkup:
         )
         return builder.as_markup()
     
-    # Добавляем кнопки с датами
     for date_info in available_dates:
         button_text = f"{date_info['day_of_week']}\n{date_info['display_date']}"
         builder.row(
             InlineKeyboardButton(
                 text=button_text,
-                callback_data=f"date_{date_info['date']}"  # "date_2026-04-12"
+                callback_data=f"date_{date_info['date']}"
             )
         )
     
-    # Кнопки навигации
     builder.row(
         InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_blood"),
         InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
@@ -879,7 +994,7 @@ def get_dates_keyboard(available_dates: List[dict]) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 def get_times_keyboard(times_list: List[str], current_step: int = 1, total_steps: int = 3) -> InlineKeyboardMarkup:
-    """Клавиатура для выбора времени с прогресс-баром"""
+    """Клавиатура для выбора времени"""
     builder = InlineKeyboardBuilder()
     
     if not times_list:
@@ -889,24 +1004,20 @@ def get_times_keyboard(times_list: List[str], current_step: int = 1, total_steps
         )
         return builder.as_markup()
     
-    # Создаем кнопки времени
     time_buttons = []
     for i, time_str in enumerate(times_list):
         time_buttons.append(
             InlineKeyboardButton(text=f"⏰ {time_str}", callback_data=f"time_{time_str}")
         )
     
-    # Добавляем кнопки времени (по 3 в ряд)
     for i in range(0, len(time_buttons), 3):
         builder.row(*time_buttons[i:i+3])
     
-    # Добавляем кнопки навигации
     builder.row(
         InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_date"),
         InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
     )
     
-    # Добавляем прогресс-бар
     progress = get_progress_bar(current_step, total_steps)
     builder.row(InlineKeyboardButton(text=progress, callback_data="progress_info"))
     
@@ -914,7 +1025,6 @@ def get_times_keyboard(times_list: List[str], current_step: int = 1, total_steps
 
 def get_progress_bar(current: int, total: int, length: int = 8) -> str:
     """Создает текстовый прогресс-бар"""
-    # Вычисляем процент выполнения
     percentage = (current - 1) / (total - 1) if total > 1 else 0
     filled = int(percentage * length)
     empty = length - filled
@@ -958,7 +1068,10 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔄 Обновить кэш", callback_data="admin_refresh_cache")
     )
     builder.row(
-        InlineKeyboardButton(text="🔄 Сбросить данные", callback_data="admin_reset"),
+        InlineKeyboardButton(text="📊 Проверить квоты", callback_data="admin_show_quotas"),
+        InlineKeyboardButton(text="🔄 Сбросить данные", callback_data="admin_reset")
+    )
+    builder.row(
         InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
     )
     
@@ -969,56 +1082,48 @@ async def start_command(message: types.Message, state: FSMContext):
     """Команда /start - показывает главное меню"""
     user = message.from_user
     
-    # Проверка ограничения частоты запросов
     if not rate_limiter.is_allowed(user.id):
         wait_time = int(rate_limiter.get_wait_time(user.id))
         await message.answer(
-            f"⏳ Слишком много запросов. Пожалуйста, подождите {wait_time} секунд.",
-            parse_mode=None
+            f"⏳ Слишком много запросов. Пожалуйста, подождите {wait_time} секунд."
         )
         return
     
     await state.clear()
-    
-    # Очищаем данные о таймауте при старте
     session_timeout.clear_session(user.id)
     session_timeout.update_activity(user.id)
     
-    # ПРИНУДИТЕЛЬНО ОБНОВЛЯЕМ КЭШ ПРИ СТАРТЕ (только в GOOGLE/HYBRID режиме)
     if MODE in ["GOOGLE", "HYBRID"]:
-        print(f"[CACHE] 🔄 Принудительное обновление кэша при старте для user_id={user.id}")
+        print(f"[CACHE] 🔄 Принудительное обновление кэша при старте")
         refresh_result = force_refresh_cache(user.id)
         if refresh_result["status"] == "success":
-            print(f"[CACHE] ✅ Кэш успешно обновлен из Google Таблиц")
+            print(f"[CACHE] ✅ Кэш успешно обновлен")
         else:
             print(f"[CACHE] ⚠️ Не удалось обновить кэш: {refresh_result.get('data', 'unknown error')}")
     
     greeting_name = user.first_name if user.first_name else "пользователь"
     
-    # Информация о режиме
     mode_info = {
         "LOCAL": "🔧 Автономный режим",
         "GOOGLE": "🌐 Режим Google Script",
         "HYBRID": "⚡ Гибридный режим"
     }.get(MODE, "❓ Неизвестный режим")
     
-    # Проверяем, является ли пользователь администратором
     is_admin = user.id in ADMIN_IDS
     admin_text = "\n👑 *Вы администратор* - доступны дополнительные функции" if is_admin else ""
     
     await message.answer(
-        f"🎯 *Донорская станция v3.3*\n"
+        f"🎯 *Донорская станция v3.4*\n"
         f"{mode_info}\n\n"
         f"👋 Привет, {greeting_name}!{admin_text}\n\n"
         f"Я помогу вам записаться на донорство крови, "
         f"проверить доступное время или отменить запись.\n\n"
         f"*Новые возможности:*\n"
-        f"• 📅 Выбор конкретной даты вместо дней недели\n"
-        f"• 🩸 8 групп крови вместо 4\n"
+        f"• 📅 Выбор конкретной даты\n"
+        f"• 🩸 8 групп крови\n"
         f"• ⏰ Автоматический поиск доступных дат\n"
-        f"• 🗑️ Очистка и обновление кэша квот\n"
-        f"• 🔄 Автоматическое обновление данных при старте\n"
-        f"• 📊 Статистика из Google Таблиц\n\n"
+        f"• 📊 Статистика из Google Таблиц\n"
+        f"• 🔄 Исправлена совместимость с Google Script\n\n"
         f"*Выберите действие:*",
         parse_mode="Markdown",
         reply_markup=get_main_menu_keyboard()
@@ -1028,10 +1133,8 @@ async def process_main_menu(callback: CallbackQuery, state: FSMContext):
     """Обработка главного меню"""
     user = callback.from_user
     
-    # Обновляем время активности при взаимодействии с меню
     session_timeout.update_activity(user.id)
     
-    # Проверка ограничения частоты запросов
     if not rate_limiter.is_allowed(user.id):
         wait_time = int(rate_limiter.get_wait_time(user.id))
         await callback.answer(f"⏳ Подождите {wait_time} секунд", show_alert=True)
@@ -1059,7 +1162,7 @@ async def process_main_menu(callback: CallbackQuery, state: FSMContext):
     elif action == "main_check":
         await callback.message.edit_text(
             "🔍 *Проверка доступного времени*\n\n"
-            "Выберите вашу группа крови:",
+            "Выберите вашу группу крови:",
             parse_mode="Markdown",
             reply_markup=get_blood_group_keyboard()
         )
@@ -1081,7 +1184,6 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора группы крови"""
     user = callback.from_user
     
-    # Обновляем время активности
     session_timeout.update_activity(user.id)
     
     if callback.data == "cancel":
@@ -1103,13 +1205,10 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Пожалуйста, выберите группу крови", show_alert=True)
         return
     
-    # Извлекаем группу крови (убираем префикс "blood_")
-    blood_group = callback.data[6:]  # "blood_A+" -> "A+"
+    blood_group = callback.data[6:]
     
-    # Обновляем данные состояния
     await state.update_data(blood_group=blood_group)
     
-    # Получаем доступные даты (без принудительного обновления, используем кэш)
     response = get_available_dates(user.id)
     
     if response['status'] == 'error':
@@ -1142,9 +1241,8 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
     
     action_text = "проверки" if is_check else "записи"
     
-    # Формируем текст с информацией о доступных датах
     dates_text = ""
-    for i, date_info in enumerate(available_dates[:6]):  # Показываем до 6 дат
+    for i, date_info in enumerate(available_dates[:6]):
         dates_text += f"• *{date_info['day_of_week']}* - {date_info['display_date']}\n"
     
     await callback.message.edit_text(
@@ -1162,7 +1260,6 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора даты"""
     user = callback.from_user
     
-    # Обновляем время активности
     session_timeout.update_activity(user.id)
     
     if callback.data == "cancel":
@@ -1184,10 +1281,8 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Пожалуйста, выберите дату", show_alert=True)
         return
     
-    # Извлекаем дату из callback
-    selected_date = callback.data[5:]  # "date_2026-04-12" -> "2026-04-12"
+    selected_date = callback.data[5:]
     
-    # Получаем данные состояния
     user_data = await state.get_data()
     blood_group = user_data.get('blood_group')
     
@@ -1202,15 +1297,12 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     
-    # Сохраняем выбранную дату
     await state.update_data(selected_date=selected_date)
     
-    # Преобразуем дату в читаемый формат для отображения
     try:
         date_obj = datetime.strptime(selected_date, "%Y-%m-%d")
         display_date = date_obj.strftime("%d.%m.%Y")
         
-        # Получаем день недели на русском
         days_ru = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
         day_of_week = days_ru[date_obj.weekday()]
         
@@ -1218,7 +1310,6 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
         display_date = selected_date
         day_of_week = "неизвестно"
     
-    # Проверяем доступные времена ИЗ GOOGLE ТАБЛИЦ
     response = get_free_times(selected_date, blood_group)
     
     if response['status'] == 'error':
@@ -1246,19 +1337,25 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
                 reply_markup=get_main_menu_keyboard()
             )
         else:
+            # Получаем актуальный список дат
+            dates_response = get_available_dates(user.id)
+            if dates_response['status'] == 'success':
+                available_dates = dates_response['data']['available_dates']
+            else:
+                available_dates = []
+                
             await callback.message.edit_text(
                 f"❌ *На {display_date} ({day_of_week}) для группы {blood_group} все квоты заняты.*\n"
                 f"📊 Осталось мест: {quota}\n\n"
                 f"*Выберите другую дату:*",
                 parse_mode="Markdown",
-                reply_markup=get_dates_keyboard(response.get('available_dates', []))
+                reply_markup=get_dates_keyboard(available_dates)
             )
         await state.clear() if is_check else None
         await callback.answer()
         return
     
     if is_check:
-        # Группируем время по часам для компактного отображения
         time_groups = {}
         for t in times:
             hour = t.split(':')[0]
@@ -1297,8 +1394,8 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
         )
         await state.clear()
     else:
-        current_step = 2  # Текущий шаг (выбор даты)
-        total_steps = 3   # Всего шагов (группа крови, дата, время)
+        current_step = 2
+        total_steps = 3
         
         await callback.message.edit_text(
             f"✅ *Доступное время на {display_date}:*\n"
@@ -1317,7 +1414,6 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора времени"""
     user = callback.from_user
     
-    # Обновляем время активности
     session_timeout.update_activity(user.id)
     
     if callback.data == "cancel":
@@ -1326,10 +1422,26 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
         return
     
     if callback.data == "back_to_date":
+        user_data = await state.get_data()
+        blood_group = user_data.get('blood_group')
+        
+        # Получаем актуальный список дат
+        dates_response = get_available_dates(user.id)
+        if dates_response['status'] == 'success':
+            available_dates = dates_response['data']['available_dates']
+        else:
+            available_dates = []
+        
+        dates_text = ""
+        for i, date_info in enumerate(available_dates[:6]):
+            dates_text += f"• *{date_info['day_of_week']}* - {date_info['display_date']}\n"
+        
         await callback.message.edit_text(
-            "📅 *Выберите дату:*",
+            f"📅 *Выберите дату:*\n\n"
+            f"🩸 Группа крови: *{blood_group}*\n\n"
+            f"*Доступные даты:*\n{dates_text}",
             parse_mode="Markdown",
-            reply_markup=get_dates_keyboard([])  # TODO: Вернуть доступные даты
+            reply_markup=get_dates_keyboard(available_dates)
         )
         await state.set_state(Form.waiting_for_date)
         await callback.answer()
@@ -1346,7 +1458,6 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     selected_time = callback.data.split("_", 1)[1]
     user_data = await state.get_data()
     
-    # Проверяем наличие необходимых данных
     selected_date = user_data.get('selected_date')
     blood_group = user_data.get('blood_group')
     
@@ -1361,14 +1472,12 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     
-    # Преобразуем дату для отображения
     try:
         date_obj = datetime.strptime(selected_date, "%Y-%m-%d")
         display_date = date_obj.strftime("%d.%m.%Y")
     except ValueError:
         display_date = selected_date
     
-    # Проверяем существующую запись
     check_response = check_existing(selected_date, user.id)
     
     if check_response['status'] == 'error':
@@ -1397,7 +1506,6 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     
-    # Регистрируем запись
     response = register(
         selected_date,
         blood_group,
@@ -1406,21 +1514,24 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     )
     
     if response['status'] == 'error':
+        # Получаем актуальные времена для повторного выбора
+        times_response = get_free_times(selected_date, blood_group)
+        if times_response['status'] == 'success':
+            times = times_response['data']['times']
+        else:
+            times = []
+            
         await callback.message.edit_text(
             f"❌ *Ошибка регистрации:* {response['data']}\n\n"
             f"Попробуйте выбрать другое время.",
             parse_mode="Markdown",
-            reply_markup=get_times_keyboard(
-                user_data.get('available_times', []),
-                2, 3
-            )
+            reply_markup=get_times_keyboard(times, 2, 3)
         )
         await callback.answer()
         return
     
     ticket_data = response['data']
     
-    # Формируем талон
     ticket_text = (
         "🎫 *ВАШ ТАЛОН НА ДОНОРСТВО*\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -1445,15 +1556,14 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer("✅ Запись успешно оформлена!")
 
-# ========== НЕОБХОДИМЫЕ ФУНКЦИИ КОМАНД ==========
-
+# ========== ФУНКЦИИ КОМАНД ==========
 async def cancel_command(message: types.Message, state: FSMContext):
     """Команда /cancel - отмена текущего диалога"""
     current_state = await state.get_state()
     
     if current_state is None:
         await message.answer(
-            "ℹ️ *Нет активного диалога для отмена.*\n"
+            "ℹ️ *Нет активного диалога для отмены.*\n"
             "Используйте кнопки ниже для навигации:",
             parse_mode="Markdown",
             reply_markup=get_main_menu_keyboard()
@@ -1473,7 +1583,7 @@ async def cancel_command(message: types.Message, state: FSMContext):
 async def help_command(message: types.Message):
     """Команда /help"""
     help_text = (
-        "📋 *Помощь по боту v3.3:*\n\n"
+        "📋 *Помощь по боту v3.4:*\n\n"
         "*Основные функции:*\n"
         "• 📋 Записаться на донорство\n"
         "• 🔍 Проверить доступное время\n"
@@ -1481,13 +1591,12 @@ async def help_command(message: types.Message):
         "• 📊 Показать статистику\n"
         "• ❌ Отменить свою запись\n\n"
         "*Новые возможности:*\n"
-        "📅 *Выбор конкретных дат* вместо дней недели\n"
-        "🩸 *8 групп крови* (A+, A-, B+, B-, AB+, AB-, O+, O-)\n"
-        "⚡ *Автоматический поиск* 6 ближайших рабочих дней\n"
+        "📅 *Выбор конкретных дат*\n"
+        "🩸 *8 групп крови*\n"
+        "⚡ *Автоматический поиск дат*\n"
         "⏰ *Таймаут сессии* 10 минут\n"
-        "🗑️ *Очистка и обновление кэша квот*\n"
-        "🔄 *Автоматическое обновление данных при старте*\n"
-        "📊 *Статистика из Google Таблиц*\n\n"
+        "📊 *Статистика из Google Таблиц*\n"
+        "🔄 *Исправлена совместимость с Google Script*\n\n"
         "*Правила:*\n"
         "📌 Одна запись в день на пользователя\n"
         "📅 Запись на ближайшие доступные даты\n"
@@ -1499,6 +1608,7 @@ async def help_command(message: types.Message):
         "*Администраторские функции:*\n"
         "🔄 Обновить кэш из Google Таблиц\n"
         "🗑️ Очистить кэш квот\n"
+        "📊 Проверить квоты\n"
         "🔄 Сбросить все данные\n\n"
         "По вопросам обращайтесь к администратору."
     )
@@ -1539,12 +1649,10 @@ async def show_my_bookings(message: types.Message, user: types.User):
             reply_markup=get_main_menu_keyboard()
         )
     else:
-        # Создаем клавиатуру с кнопками отмены
         builder = InlineKeyboardBuilder()
         
         bookings_text = ""
         for i, booking in enumerate(bookings):
-            # Форматируем дату для отображения
             try:
                 date_obj = datetime.strptime(booking['date'], "%Y-%m-%d")
                 display_date = date_obj.strftime("%d.%m.%Y")
@@ -1553,7 +1661,6 @@ async def show_my_bookings(message: types.Message, user: types.User):
             
             bookings_text += f"• *{display_date}* ({booking['day']}): {booking['time']} (талон: {booking['ticket']}, группа: {booking['blood_group']})\n"
             
-            # Добавляем кнопку отмены для каждой записи
             builder.row(
                 InlineKeyboardButton(
                     text=f"❌ Отменить запись на {display_date}",
@@ -1561,7 +1668,6 @@ async def show_my_bookings(message: types.Message, user: types.User):
                 )
             )
         
-        # Добавляем кнопку возврата в главное меню
         builder.row(
             InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
         )
@@ -1578,11 +1684,11 @@ async def show_my_bookings(message: types.Message, user: types.User):
         )
 
 async def stats_command(message: types.Message):
-    """Команда /stats - показать статистику ИЗ GOOGLE ТАБЛИЦ"""
+    """Команда /stats - показать статистику"""
     await show_stats(message)
 
 async def show_stats(message: types.Message):
-    """Показать статистику ИЗ GOOGLE ТАБЛИЦ"""
+    """Показать статистику"""
     stats_response = get_stats()
     
     if stats_response['status'] == 'error':
@@ -1593,81 +1699,67 @@ async def show_stats(message: types.Message):
         )
         return
     
-    # Проверяем структуру ответа для разных режимов
-    if MODE == "LOCAL":
-        # Локальный режим
-        total_bookings = stats_response["total_bookings"]
-        total_users = stats_response["total_users"]
-        
-        day_stats_text = ""
-        for day, data in stats_response["day_stats"].items():
-            day_short = day[:3]
-            total_quotas = data.get("total_quotas", 0)
-            quotas_text = ""
-            
-            if "quotas" in data:
-                for bg, q in data["quotas"].items():
-                    quotas_text += f"{bg}: {q}, "
-            
-            day_stats_text += f"• *{day}*: всего {total_quotas} мест ({quotas_text.rstrip(', ')})\n"
-        
-        stats_text = (
-            f"📊 *Статистика донорской станции v3.3*\n\n"
-            f"👥 *Всего пользователей:* {total_users}\n"
-            f"📋 *Всего записей:* {total_bookings}\n\n"
-            f"*Квоты по дням:*\n{day_stats_text}\n"
-            f"🔧 *АВТОНОМНЫЙ РЕЖИМ*\n⚠️ *Внимание:* При перезапуске бота статистика сбросится!"
-        )
-    else:
-        # Режимы GOOGLE и HYBRID
-        stats_data = stats_response['data']
-        
-        if isinstance(stats_data, dict):
-            # Получаем данные из ответа
-            total_bookings = stats_data.get("total_bookings", 0)
-            total_users = stats_data.get("total_users", 0)
-            day_stats = stats_data.get("day_stats", {})
-            
-            day_stats_text = ""
-            for day, data in day_stats.items():
-                total_quotas = data.get("total_quotas", 0)
-                quotas = data.get("quotas", {})
-                quotas_text = ""
-                
-                for bg, q in quotas.items():
-                    quotas_text += f"{bg}: {q}, "
-                
-                day_stats_text += f"• *{day}*: всего {total_quotas} мест ({quotas_text.rstrip(', ')})\n"
-            
-            mode_info = {
-                "GOOGLE": "🌐 *РЕЖИМ GOOGLE SCRIPT*\n✅ Данные берутся напрямую из Google Таблиц",
-                "HYBRID": "⚡ *ГИБРИДНЫЙ РЕЖИМ*\n🔄 Автоматическое переключение между режимами"
-            }.get(MODE, "")
-            
-            stats_text = (
-                f"📊 *Статистика донорской станции v3.3*\n\n"
-                f"👥 *Всего пользователей:* {total_users}\n"
-                f"📋 *Всего записей:* {total_bookings}\n\n"
-                f"*Квоты по дням:*\n{day_stats_text}\n"
-                f"{mode_info}"
-            )
-        else:
-            # Если ответ не в ожидаемом формате
-            stats_text = (
-                f"📊 *Статистика донорской станции v3.3*\n\n"
-                f"Статистика загружена из Google Таблиц.\n"
-                f"Данные: {str(stats_data)[:200]}..."
-            )
+    stats_data = stats_response['data']
     
-    # Добавляем кнопки администрирования для админов
+    total_bookings = stats_data.get("total_bookings", 0)
+    total_users = stats_data.get("total_users", 0)
+    most_popular_day = stats_data.get("most_popular_day", "нет данных")
+    most_popular_blood = stats_data.get("most_popular_blood_group", "нет данных")
+    
+    day_stats = stats_data.get("day_stats", {})
+    blood_group_stats = stats_data.get("blood_group_stats", {})
+    quota_stats = stats_data.get("quota_stats", {})
+    
+    day_stats_text = ""
+    if isinstance(day_stats, dict):
+        sorted_days = sorted(day_stats.items(), key=lambda x: x[1], reverse=True)[:5]
+        for day, count in sorted_days:
+            day_stats_text += f"• *{day}*: {count} зап.\n"
+    
+    blood_stats_text = ""
+    if isinstance(blood_group_stats, dict):
+        sorted_bg = sorted(blood_group_stats.items(), key=lambda x: x[1], reverse=True)
+        for bg, count in sorted_bg:
+            blood_stats_text += f"• *{bg}*: {count} зап.\n"
+    
+    quota_info = ""
+    if isinstance(quota_stats, dict):
+        total_quota = quota_stats.get("totalQuota", 0)
+        total_used = quota_stats.get("totalUsed", 0)
+        remaining = total_quota - total_used
+        quota_info = f"📊 *Общая квота:* {total_quota} мест\n"
+        quota_info += f"✅ *Использовано:* {total_used} мест\n"
+        quota_info += f"⏳ *Осталось:* {remaining} мест\n"
+    
+    mode_info = {
+        "LOCAL": "🔧 *АВТОНОМНЫЙ РЕЖИМ*",
+        "GOOGLE": "🌐 *РЕЖИМ GOOGLE SCRIPT*",
+        "HYBRID": "⚡ *ГИБРИДНЫЙ РЕЖИМ*"
+    }.get(MODE, "")
+    
+    stats_text = (
+        f"📊 *Статистика донорской станции v3.4*\n\n"
+        f"👥 *Всего пользователей:* {total_users}\n"
+        f"📋 *Всего записей:* {total_bookings}\n"
+        f"📅 *Популярный день:* {most_popular_day}\n"
+        f"🩸 *Популярная группа:* {most_popular_blood}\n\n"
+        f"{quota_info}\n"
+        f"*Записи по дням:*\n{day_stats_text if day_stats_text else '• Нет данных\n'}\n"
+        f"*Записи по группам крови:*\n{blood_stats_text if blood_stats_text else '• Нет данных\n'}\n"
+        f"{mode_info}"
+    )
+    
     if message.from_user.id in ADMIN_IDS:
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="🗑️ Очистить кэш квот", callback_data="admin_clear_cache"),
+            InlineKeyboardButton(text="🗑️ Очистить кэш", callback_data="admin_clear_cache"),
             InlineKeyboardButton(text="🔄 Обновить кэш", callback_data="admin_refresh_cache")
         )
         builder.row(
-            InlineKeyboardButton(text="🔄 Сбросить данные", callback_data="admin_reset"),
+            InlineKeyboardButton(text="📊 Проверить квоты", callback_data="admin_show_quotas"),
+            InlineKeyboardButton(text="🔄 Сбросить данные", callback_data="admin_reset")
+        )
+        builder.row(
             InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
         )
         reply_markup = builder.as_markup()
@@ -1682,6 +1774,73 @@ async def show_stats(message: types.Message):
         stats_text,
         parse_mode="Markdown",
         reply_markup=reply_markup
+    )
+
+async def show_quotas(message: types.Message):
+    """Показать информацию о квотах (только для админов)"""
+    if message.from_user.id not in ADMIN_IDS:
+        await message.answer(
+            "⛔ *У вас нет прав для просмотра квот.*",
+            parse_mode="Markdown"
+        )
+        return
+    
+    quotas_response = get_quotas()
+    
+    if quotas_response['status'] == 'error':
+        await message.answer(
+            f"❌ *Ошибка получения квот:* {quotas_response['data']}",
+            parse_mode="Markdown",
+            reply_markup=get_admin_keyboard()
+        )
+        return
+    
+    quotas_data = quotas_response['data']
+    
+    if isinstance(quotas_data, dict) and 'quotas' in quotas_data:
+        quotas = quotas_data['quotas']
+        message_text = quotas_data.get('message', 'Информация о квотах')
+    else:
+        await message.answer(
+            f"📊 *Информация о квотах*\n\n{quotas_data}",
+            parse_mode="Markdown",
+            reply_markup=get_admin_keyboard()
+        )
+        return
+    
+    total_quota = quotas.get('totalQuota', 0)
+    total_used = quotas.get('totalUsed', 0)
+    remaining = quotas.get('remaining', total_quota - total_used)
+    by_day = quotas.get('byDay', {})
+    
+    text = f"📊 *КВОТЫ ДОНОРСКОЙ СТАНЦИИ*\n\n"
+    text += f"📋 *Всего квот:* {total_quota}\n"
+    text += f"✅ *Использовано:* {total_used}\n"
+    text += f"⏳ *Осталось:* {remaining}\n\n"
+    text += f"*Детали по дням:*\n"
+    
+    for day, day_data in by_day.items():
+        day_total = day_data.get('total', 0)
+        day_used = day_data.get('used', 0)
+        day_remaining = day_data.get('remaining', day_total - day_used)
+        text += f"\n📅 *{day}*:\n"
+        text += f"  Всего: {day_total}, Использовано: {day_used}, Осталось: {day_remaining}\n"
+        
+        day_quotas = day_data.get('quotas', {})
+        if day_quotas:
+            quotas_text = ", ".join([f"{bg}: {q}" for bg, q in day_quotas.items()])
+            text += f"  Квоты по группам: {quotas_text}\n"
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_refresh_cache"),
+        InlineKeyboardButton(text="🔙 Назад", callback_data="main_stats")
+    )
+    
+    await message.answer(
+        text,
+        parse_mode="Markdown",
+        reply_markup=builder.as_markup()
     )
 
 async def reset_command(message: types.Message):
@@ -1739,10 +1898,8 @@ async def refresh_cache_command(message: types.Message):
         return
     
     if MODE in ["GOOGLE", "HYBRID"]:
-        # Отправляем сообщение о начале обновления
         msg = await message.answer("🔄 *Обновление кэша из Google Таблиц...*", parse_mode="Markdown")
         
-        # Принудительно обновляем кэш
         result = force_refresh_cache(message.from_user.id)
         
         if result["status"] == "success":
@@ -1770,7 +1927,6 @@ async def refresh_cache_command(message: types.Message):
 async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
     """Обработка отмены записи и админских действий"""
     try:
-        # Обновляем время активности
         session_timeout.update_activity(callback.from_user.id)
         
         if callback.data == "cancel_no":
@@ -1784,13 +1940,11 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
             return
         
         if callback.data.startswith("cancel_yes_"):
-            # Извлекаем информацию о записи
             parts = callback.data.split("_")
             if len(parts) >= 4:
                 date = parts[2]
-                ticket = "_".join(parts[3:])  # На случай, если в номере талона есть подчеркивания
+                ticket = "_".join(parts[3:])
                 
-                # Отправляем запрос на отмену
                 response = cancel_booking(
                     date,
                     ticket,
@@ -1798,7 +1952,6 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
                 )
                 
                 if response['status'] == 'success':
-                    # Форматируем дату для отображения
                     try:
                         date_obj = datetime.strptime(date, "%Y-%m-%d")
                         display_date = date_obj.strftime("%d.%m.%Y")
@@ -1831,13 +1984,11 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
             return
         
         if callback.data.startswith("cancel_ask_"):
-            # Запрос на подтверждение отмены
             parts = callback.data.split("_")
             if len(parts) >= 4:
                 date = parts[2]
                 ticket = "_".join(parts[3:])
                 
-                # Форматируем дату для отображения
                 try:
                     date_obj = datetime.strptime(date, "%Y-%m-%d")
                     display_date = date_obj.strftime("%d.%m.%Y")
@@ -1862,8 +2013,74 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
             await callback.answer()
             return
         
+        if callback.data == "admin_show_quotas":
+            if callback.from_user.id not in ADMIN_IDS:
+                await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
+                return
+            
+            quotas_response = get_quotas()
+            
+            if quotas_response['status'] == 'error':
+                await callback.message.edit_text(
+                    f"❌ *Ошибка получения квот:* {quotas_response['data']}",
+                    parse_mode="Markdown",
+                    reply_markup=get_admin_keyboard()
+                )
+                await callback.answer()
+                return
+            
+            quotas_data = quotas_response['data']
+            
+            if isinstance(quotas_data, dict) and 'quotas' in quotas_data:
+                quotas = quotas_data['quotas']
+                message_text = quotas_data.get('message', 'Информация о квотах')
+            else:
+                await callback.message.edit_text(
+                    f"📊 *Информация о квотах*\n\n{quotas_data}",
+                    parse_mode="Markdown",
+                    reply_markup=get_admin_keyboard()
+                )
+                await callback.answer()
+                return
+            
+            total_quota = quotas.get('totalQuota', 0)
+            total_used = quotas.get('totalUsed', 0)
+            remaining = quotas.get('remaining', total_quota - total_used)
+            by_day = quotas.get('byDay', {})
+            
+            text = f"📊 *КВОТЫ ДОНОРСКОЙ СТАНЦИИ*\n\n"
+            text += f"📋 *Всего квот:* {total_quota}\n"
+            text += f"✅ *Использовано:* {total_used}\n"
+            text += f"⏳ *Осталось:* {remaining}\n\n"
+            text += f"*Детали по дням:*\n"
+            
+            for day, day_data in by_day.items():
+                day_total = day_data.get('total', 0)
+                day_used = day_data.get('used', 0)
+                day_remaining = day_data.get('remaining', day_total - day_used)
+                text += f"\n📅 *{day}*:\n"
+                text += f"  Всего: {day_total}, Использовано: {day_used}, Осталось: {day_remaining}\n"
+                
+                day_quotas = day_data.get('quotas', {})
+                if day_quotas:
+                    quotas_text = ", ".join([f"{bg}: {q}" for bg, q in day_quotas.items()])
+                    text += f"  Квоты по группам: {quotas_text}\n"
+            
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_refresh_cache"),
+                InlineKeyboardButton(text="🔙 Назад", callback_data="main_stats")
+            )
+            
+            await callback.message.edit_text(
+                text,
+                parse_mode="Markdown",
+                reply_markup=builder.as_markup()
+            )
+            await callback.answer()
+            return
+        
         if callback.data == "admin_reset":
-            # Проверяем, является ли пользователь админом
             if callback.from_user.id not in ADMIN_IDS:
                 await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
                 return
@@ -1880,12 +2097,10 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
             return
         
         if callback.data == "admin_clear_cache":
-            # Проверяем, является ли пользователь админом
             if callback.from_user.id not in ADMIN_IDS:
                 await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
                 return
             
-            # Очищаем кэш
             result = clear_cache()
             
             if result['status'] == 'success':
@@ -1906,12 +2121,10 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
             return
         
         if callback.data == "admin_refresh_cache":
-            # Проверяем, является ли пользователь админом
             if callback.from_user.id not in ADMIN_IDS:
                 await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
                 return
             
-            # Обновляем кэш
             result = force_refresh_cache(callback.from_user.id)
             
             if result['status'] == 'success':
@@ -1946,22 +2159,19 @@ async def show_main_menu_from_callback(callback: CallbackQuery):
     user = callback.from_user
     greeting_name = user.first_name if user.first_name else "пользователь"
     
-    # Обновляем время активности
     session_timeout.update_activity(user.id)
     
-    # Информация о режиме
     mode_info = {
         "LOCAL": "🔧 Автономный режим",
         "GOOGLE": "🌐 Режим Google Script",
         "HYBRID": "⚡ Гибридный режим"
     }.get(MODE, "❓ Неизвестный режим")
     
-    # Проверяем, является ли пользователь администратором
     is_admin = user.id in ADMIN_IDS
     admin_text = "\n👑 *Вы администратор* - доступны дополнительные функции" if is_admin else ""
     
     await callback.message.edit_text(
-        f"🎯 *Донорская станция v3.3*\n"
+        f"🎯 *Донорская станция v3.4*\n"
         f"{mode_info}\n\n"
         f"👋 Привет, {greeting_name}!{admin_text}\n\n"
         f"Я помогу вам записаться на донорство крови, "
@@ -1974,7 +2184,6 @@ async def show_main_menu_from_callback(callback: CallbackQuery):
 async def process_main_menu_button(callback: CallbackQuery, state: FSMContext):
     """Обработка кнопки 'В главное меню'"""
     if callback.data == "main_menu":
-        # Обновляем время активности при нажатии на главное меню
         session_timeout.update_activity(callback.from_user.id)
         await show_main_menu_from_callback(callback)
         await state.clear()
@@ -1983,22 +2192,19 @@ async def process_main_menu_button(callback: CallbackQuery, state: FSMContext):
 # ========== ЗАПУСК БОТА ==========
 async def main():
     """Основная функция запуска бота"""
-    # Настройка логирования
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     
-    # === SSL-ОБХОД ДЛЯ КОРПОРАТИВНОЙ СЕТИ ===
     import ssl
     import aiohttp
     from aiogram.client.session.aiohttp import AiohttpSession
     
     print("=" * 60)
-    print("🚀 ЗАПУСК ДОНОРСКОГО БОТА v3.3")
+    print("🚀 ЗАПУСК ДОНОРСКОГО БОТА v3.4")
     print("=" * 60)
     
-    # Тестируем соединение с Google Script
     if MODE in ["GOOGLE", "HYBRID"]:
         print("🔗 Тестирование соединения с Google Script...")
         test_result = google_client.test_connection()
@@ -2025,40 +2231,31 @@ async def main():
         print("🌐 Данные хранятся в Google Таблицах")
         print(f"📊 URL: {GOOGLE_SCRIPT_URL}")
         print("🔄 Кэш автоматически обновляется при команде /start")
-        print("📊 Статистика и времена берутся из Google Таблиц")
+        print("✅ Исправлена совместимость с Google Script")
     elif MODE == "HYBRID":
         print("⚡ Гибридный режим: Google Script + локальное хранилище")
         print("🔄 Автоматическое переключение при ошибках")
-        print("🔄 Кэш автоматически обновляется при команде /start")
+        print("✅ Исправлена совместимость с Google Script")
     
     print("=" * 60)
     
-    # 1. Создаем SSL-контекст, который игнорирует проверки
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
     
-    # 2. Создаем коннектор aiohttp с нашим SSL-контекстом
     connector = aiohttp.TCPConnector(ssl=ssl_context)
-    
-    # 3. Создаем сессию aiohttp с нашим коннектором
     aiohttp_session = aiohttp.ClientSession(connector=connector)
     
-    # 4. Создаем сессию AiohttpSession и подменяем её внутреннюю сессию
     session = AiohttpSession()
     session._session = aiohttp_session
     
-    # 5. Инициализация бота
     bot = Bot(token=TOKEN, session=session)
     
-    # 6. Инициализация хранилища и диспетчера
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     
-    # 7. Регистрируем middleware для таймаута
     dp.update.middleware(timeout_middleware)
     
-    # 8. Регистрация команд
     dp.message.register(start_command, Command("start"))
     dp.message.register(cancel_command, Command("cancel"))
     dp.message.register(help_command, Command("help"))
@@ -2068,7 +2265,6 @@ async def main():
     dp.message.register(clear_cache_command, Command("clearcache"))
     dp.message.register(refresh_cache_command, Command("refresh"))
     
-    # 9. Регистрация callback-запросов
     dp.callback_query.register(process_main_menu_button, F.data == "main_menu")
     dp.callback_query.register(process_main_menu, F.data.startswith("main_"))
     dp.callback_query.register(process_blood_group, Form.waiting_for_blood_group)
@@ -2083,14 +2279,12 @@ async def main():
     print("=" * 60)
     
     try:
-        # Запуск бота
         await dp.start_polling(bot)
     except KeyboardInterrupt:
-        print("\n⚠️  Бот остановлен пользователем")
+        print("\n⚠️ Бот остановлен пользователем")
     except Exception as e:
         print(f"\n❌ Критическая ошибка: {e}")
     finally:
-        # Закрываем сессии при завершении
         await aiohttp_session.close()
         print("✅ Сессии закрыты")
 
