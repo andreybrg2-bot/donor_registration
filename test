@@ -1,0 +1,390 @@
+"""
+🔌 ТЕСТЕР СОЕДИНЕНИЯ С GOOGLE SCRIPT
+Версия: 1.0
+Автор: AI Assistant
+
+Этот файл предназначен для диагностики проблем с подключением к Google Script
+Запускается отдельно от основного бота
+"""
+
+import requests
+import json
+import sys
+from datetime import datetime
+
+# ========== НАСТРОЙКИ ==========
+# URL вашего Google Apps Script
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuL_A7CyFHtgvBKKSK74swazQSlj0kwDWY4ITENdOcP-GPMZ1h1JblAEsg4zr3N-a7/exec"
+
+# ========== ТЕСТИРОВАНИЕ ==========
+def print_separator():
+    """Вывести разделитель"""
+    print("=" * 60)
+
+def test_connection_basic():
+    """Базовый тест соединения"""
+    print_separator()
+    print("🔌 ТЕСТЕР СОЕДИНЕНИЯ С GOOGLE SCRIPT")
+    print_separator()
+    print(f"📅 Время теста: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"📎 URL для теста: {GOOGLE_SCRIPT_URL}")
+    print_separator()
+    
+    # Тест 1: Проверка URL
+    print("\n📋 ТЕСТ 1: Проверка формата URL")
+    if GOOGLE_SCRIPT_URL.startswith("https://script.google.com/"):
+        print("✅ URL имеет правильный формат")
+    else:
+        print("❌ URL имеет неправильный формат")
+        print("   Должен начинаться с: https://script.google.com/")
+    
+    # Тест 2: HTTP GET запрос
+    print("\n📋 ТЕСТ 2: HTTP GET запрос")
+    try:
+        response = requests.get(
+            GOOGLE_SCRIPT_URL,
+            timeout=10,
+            verify=False
+        )
+        print(f"✅ GET запрос выполнен")
+        print(f"   Статус код: {response.status_code}")
+        print(f"   Заголовки: {dict(response.headers).get('Content-Type', 'не указан')}")
+        
+        if response.status_code == 200:
+            print("   ✅ Сервер доступен")
+        else:
+            print(f"   ⚠️ Сервер вернул код: {response.status_code}")
+            
+    except requests.exceptions.Timeout:
+        print("❌ Таймаут GET запроса")
+    except requests.exceptions.ConnectionError:
+        print("❌ Ошибка соединения GET запроса")
+    except Exception as e:
+        print(f"❌ Ошибка GET запроса: {str(e)[:100]}")
+    
+    # Тест 3: HTTP POST запрос с action=test
+    print("\n📋 ТЕСТ 3: HTTP POST запрос (action=test)")
+    try:
+        payload = {"action": "test"}
+        print(f"   Отправка: {json.dumps(payload)}")
+        
+        response = requests.post(
+            GOOGLE_SCRIPT_URL,
+            json=payload,
+            timeout=15,
+            verify=False,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        print(f"   Статус код: {response.status_code}")
+        print(f"   Заголовки: {dict(response.headers).get('Content-Type', 'не указан')}")
+        print(f"   Длина ответа: {len(response.text)} символов")
+        
+        if response.status_code == 200:
+            print("   ✅ POST запрос успешен")
+            
+            # Пробуем распарсить JSON
+            try:
+                data = response.json()
+                print("   ✅ JSON ответ получен")
+                print(f"   Содержимое: {json.dumps(data, indent=2, ensure_ascii=False)[:200]}...")
+                
+                if data.get('status') == 'success':
+                    print("   ✅ Статус 'success' получен")
+                else:
+                    print(f"   ⚠️ Статус: {data.get('status', 'не указан')}")
+                    
+            except json.JSONDecodeError:
+                print("   ❌ НЕВЕРНЫЙ JSON ОТВЕТ")
+                print(f"   Первые 500 символов ответа:")
+                print("-" * 40)
+                print(response.text[:500])
+                print("-" * 40)
+        else:
+            print(f"   ⚠️ Сервер вернул код: {response.status_code}")
+            
+    except requests.exceptions.Timeout:
+        print("❌ Таймаут POST запроса (15 секунд)")
+    except requests.exceptions.ConnectionError:
+        print("❌ Ошибка соединения POST запроса")
+    except Exception as e:
+        print(f"❌ Ошибка POST запроса: {str(e)[:100]}")
+    
+    # Тест 4: Проверка различных actions
+    print("\n📋 ТЕСТ 4: Проверка различных API методов")
+    
+    test_actions = ["test", "get_stats", "get_quotas", "get_available_dates"]
+    
+    for action in test_actions:
+        print(f"\n   ▶️ Тестирование action: '{action}'")
+        try:
+            response = requests.post(
+                GOOGLE_SCRIPT_URL,
+                json={"action": action},
+                timeout=10,
+                verify=False
+            )
+            
+            if response.status_code == 200:
+                try:
+                    data = response.json()
+                    status = data.get('status', 'unknown')
+                    print(f"      Статус: {status}")
+                    
+                    if status == 'success':
+                        print(f"      ✅ Успешно")
+                    else:
+                        print(f"      ⚠️ Ошибка: {data.get('data', 'неизвестно')[:50]}")
+                except:
+                    print(f"      ❌ Не JSON ответ")
+            else:
+                print(f"      ❌ HTTP {response.status_code}")
+                
+        except Exception as e:
+            print(f"      ❌ Ошибка: {str(e)[:50]}")
+
+def test_with_different_methods():
+    """Тестирование с разными методами отправки"""
+    print_separator()
+    print("\n📋 ТЕСТ 5: Различные методы отправки")
+    
+    # Метод 1: json параметр
+    print("\n   Метод 1: requests.post(json=...)")
+    try:
+        response = requests.post(
+            GOOGLE_SCRIPT_URL,
+            json={"action": "test"},
+            timeout=10,
+            verify=False
+        )
+        print(f"      Статус: {response.status_code}")
+        if response.status_code == 200:
+            print("      ✅ Работает")
+    except Exception as e:
+        print(f"      ❌ {str(e)[:50]}")
+    
+    # Метод 2: data с json.dumps
+    print("\n   Метод 2: requests.post(data=json.dumps())")
+    try:
+        response = requests.post(
+            GOOGLE_SCRIPT_URL,
+            data=json.dumps({"action": "test"}),
+            headers={'Content-Type': 'application/json'},
+            timeout=10,
+            verify=False
+        )
+        print(f"      Статус: {response.status_code}")
+        if response.status_code == 200:
+            print("      ✅ Работает")
+    except Exception as e:
+        print(f"      ❌ {str(e)[:50]}")
+    
+    # Метод 3: params в URL
+    print("\n   Метод 3: requests.get(params=...)")
+    try:
+        response = requests.get(
+            GOOGLE_SCRIPT_URL,
+            params={"action": "test"},
+            timeout=10,
+            verify=False
+        )
+        print(f"      Статус: {response.status_code}")
+        if response.status_code == 200:
+            print("      ✅ Работает")
+    except Exception as e:
+        print(f"      ❌ {str(e)[:50]}")
+
+def check_ssl_certificate():
+    """Проверка SSL сертификата"""
+    print_separator()
+    print("\n📋 ТЕСТ 6: Проверка SSL сертификата")
+    
+    # С проверкой SSL
+    try:
+        response = requests.get(GOOGLE_SCRIPT_URL, timeout=5, verify=True)
+        print("   ✅ SSL проверка работает")
+    except requests.exceptions.SSLError:
+        print("   ❌ Ошибка SSL сертификата")
+        print("   💡 Решение: используйте verify=False в коде")
+    except Exception as e:
+        print(f"   ⚠️ {str(e)[:50]}")
+    
+    # Без проверки SSL
+    try:
+        response = requests.get(GOOGLE_SCRIPT_URL, timeout=5, verify=False)
+        print("   ✅ Без SSL проверки работает")
+    except Exception as e:
+        print(f"   ❌ {str(e)[:50]}")
+
+def diagnose_problems():
+    """Диагностика типичных проблем"""
+    print_separator()
+    print("\n🔍 ДИАГНОСТИКА ПРОБЛЕМ")
+    print_separator()
+    
+    problems = []
+    solutions = []
+    
+    # Проблема 1: URL
+    if not GOOGLE_SCRIPT_URL.startswith("https://script.google.com/"):
+        problems.append("❌ Неправильный формат URL")
+        solutions.append("📌 Скопируйте правильный URL из опубликованного веб-приложения")
+    
+    # Проблема 2: Доступность
+    try:
+        response = requests.get(GOOGLE_SCRIPT_URL, timeout=5, verify=False)
+        if response.status_code != 200:
+            problems.append(f"❌ Сервер недоступен (код {response.status_code})")
+            solutions.append("📌 Переопубликуйте скрипт как веб-приложение")
+    except:
+        problems.append("❌ Сервер не отвечает")
+        solutions.append("📌 Проверьте интернет-соединение")
+        solutions.append("📌 Проверьте, что скрипт опубликован")
+    
+    # Проблема 3: CORS
+    try:
+        response = requests.post(
+            GOOGLE_SCRIPT_URL,
+            json={"action": "test"},
+            timeout=5,
+            verify=False
+        )
+        if response.status_code == 200:
+            try:
+                response.json()
+            except:
+                problems.append("❌ Сервер возвращает не JSON")
+                solutions.append("📌 Убедитесь, что функция doPost возвращает JSON")
+    except:
+        pass
+    
+    # Вывод результатов диагностики
+    if problems:
+        print("\n🔴 ОБНАРУЖЕНЫ ПРОБЛЕМЫ:")
+        for i, problem in enumerate(problems, 1):
+            print(f"   {i}. {problem}")
+        
+        print("\n💡 РЕШЕНИЯ:")
+        for i, solution in enumerate(solutions, 1):
+            print(f"   {i}. {solution}")
+    else:
+        print("\n✅ ПРОБЛЕМ НЕ ОБНАРУЖЕНО")
+        print("   Соединение с Google Script работает корректно")
+
+def check_google_script_code():
+    """Вывод рекомендуемого кода для Google Script"""
+    print_separator()
+    print("\n📋 РЕКОМЕНДУЕМЫЙ КОД ДЛЯ GOOGLE SCRIPT")
+    print_separator()
+    
+    code = '''
+function doGet(e) {
+  return handleRequest(e.parameter);
+}
+
+function doPost(e) {
+  var params;
+  try {
+    params = JSON.parse(e.postData.contents);
+  } catch(error) {
+    params = e.parameter;
+  }
+  return handleRequest(params);
+}
+
+function handleRequest(params) {
+  var action = params.action;
+  
+  // Тестовый endpoint
+  if (action === "test") {
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: "success",
+        data: {
+          message: "Соединение работает!",
+          time: new Date().toISOString(),
+          version: "1.0"
+        }
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Статистика
+  if (action === "get_stats") {
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: "success",
+        data: {
+          total_bookings: 125,
+          total_users: 87,
+          day_stats: {
+            "понедельник": {
+              quotas: {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
+              total_quotas: 48
+            },
+            "вторник": {
+              quotas: {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5},
+              total_quotas: 48
+            }
+          }
+        }
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // По умолчанию
+  return ContentService
+    .createTextOutput(JSON.stringify({
+      status: "error",
+      data: "Unknown action: " + action
+    }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+'''
+    print(code)
+    print_separator()
+    print("💡 Скопируйте этот код в редактор Google Apps Script")
+    print("💡 Опубликуйте: Развернуть > Новое развертывание > Веб-приложение")
+    print("💡 Установите доступ: 'Все, у кого есть ссылка'")
+    print_separator()
+
+def main():
+    """Основная функция"""
+    try:
+        # Отключаем предупреждения SSL
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    except:
+        pass
+    
+    # Запускаем все тесты
+    test_connection_basic()
+    test_with_different_methods()
+    check_ssl_certificate()
+    diagnose_problems()
+    check_google_script_code()
+    
+    print_separator()
+    print("\n✅ ТЕСТИРОВАНИЕ ЗАВЕРШЕНО")
+    print_separator()
+    
+    # Итоговое заключение
+    print("\n📊 ИТОГОВОЕ ЗАКЛЮЧЕНИЕ:")
+    print("1. Если тест 3 (POST с action=test) прошел успешно - бот должен работать")
+    print("2. Если тест 3 вернул не JSON - проверьте код Google Script")
+    print("3. Если тест 3 не прошел - проверьте URL и публикацию скрипта")
+    print("4. Для работы бота установите MODE='HYBRID'")
+    print("\n💡 После исправления Google Script перезапустите бот")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n⚠️ Тестирование прервано пользователем")
+    except Exception as e:
+        print(f"\n\n❌ Критическая ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+
+    
+    input("\n\nНажмите Enter для выхода...")
