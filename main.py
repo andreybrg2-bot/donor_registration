@@ -44,7 +44,7 @@ TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 MODE = "GOOGLE"
 
 # URL вашего Google Apps Script
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwwfK-MBIeehCFcisYE5bux6-7b2xP8CteaoBl87xsVhr5JLQXAueIZiKnreUGSqplT/exec"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzsRqhli38yRAE50nL9DButV9C7-H4wdXvdPLCAoxh5eiZEKVzcgYOOmHPXsizZLzte/exec"
 
 # ID администраторов
 ADMIN_IDS = [5097581039]
@@ -1767,6 +1767,7 @@ async def show_stats(message: types.Message):
     
     stats_data = stats_response['data']
     
+    # Безопасно получаем данные со значениями по умолчанию
     total_bookings = stats_data.get("total_bookings", 0)
     total_users = stats_data.get("total_users", 0)
     most_popular_day = stats_data.get("most_popular_day", "нет данных")
@@ -1776,53 +1777,48 @@ async def show_stats(message: types.Message):
     blood_group_stats = stats_data.get("blood_group_stats", {})
     quota_stats = stats_data.get("quota_stats", {})
     
-    # 🔍 ОБРАБОТКА ДАННЫХ ПО ДНЯМ
+    # Форматируем статистику по дням
     day_stats_text = ""
     if isinstance(day_stats, dict):
         valid_days = []
-        for day, blood_groups in day_stats.items():
-            if isinstance(blood_groups, dict):
-                # Суммируем все used значения по группам крови для этого дня
-                total_for_day = 0
-                for blood_group, data in blood_groups.items():
-                    if isinstance(data, dict) and 'used' in data:
-                        total_for_day += data.get('used', 0)
-                if total_for_day > 0:
-                    valid_days.append((day, total_for_day))
+        for day, count in day_stats.items():
+            if isinstance(count, (int, float)) and count > 0:
+                valid_days.append((day, count))
         
         if valid_days:
             sorted_days = sorted(valid_days, key=lambda x: x[1], reverse=True)[:5]
             for day, count in sorted_days:
                 day_stats_text += f"• *{day}*: {count} зап.\n"
     
-    # 🔍 ОБРАБОТКА ДАННЫХ ПО ГРУППАМ КРОВИ
+    if not day_stats_text:
+        day_stats_text = "• Нет данных\n"
+    
+    # Форматируем статистику по группам крови
     blood_stats_text = ""
     if isinstance(blood_group_stats, dict):
         valid_blood = []
-        for bg, value in blood_group_stats.items():
-            if isinstance(value, (int, float)):
-                valid_blood.append((bg, value))
-            elif isinstance(value, str) and value.isdigit():
-                valid_blood.append((bg, int(value)))
+        for bg, count in blood_group_stats.items():
+            if isinstance(count, (int, float)) and count > 0:
+                valid_blood.append((bg, count))
         
         if valid_blood:
             sorted_bg = sorted(valid_blood, key=lambda x: x[1], reverse=True)
             for bg, count in sorted_bg:
-                if count > 0:  # Показываем только группы с записями
-                    blood_stats_text += f"• *{bg}*: {count} зап.\n"
+                blood_stats_text += f"• *{bg}*: {count} зап.\n"
     
-    # 🔍 ОБРАБОТКА КВОТ
+    if not blood_stats_text:
+        blood_stats_text = "• Нет данных\n"
+    
+    # Форматируем информацию о квотах
     quota_info = ""
-    # Используем локальные квоты, так как Google Script возвращает ошибку
-    local_quotas = local_storage.get_quotas()
-    if local_quotas['status'] == 'success':
-        quotas_data = local_quotas['data'].get('quotas', {})
-        total_quota = quotas_data.get('totalQuota', 0)
-        total_used = quotas_data.get('totalUsed', 0)
-        remaining = total_quota - total_used
+    if isinstance(quota_stats, dict):
+        total_quota = quota_stats.get('totalQuota', 0)
+        total_used = quota_stats.get('totalUsed', 0)
+        remaining = quota_stats.get('remaining', total_quota - total_used)
+        
         quota_info = f"📊 *Общая квота:* {total_quota} мест\n"
         quota_info += f"✅ *Использовано:* {total_used} мест\n"
-        quota_info += f"⏳ *Осталось:* {remaining} мест\n"
+        quota_info += f"⏳ *Осталось:* {remaining} мест\n\n"
     
     mode_info = {
         "LOCAL": "🔧 *АВТОНОМНЫЙ РЕЖИМ*",
@@ -1830,24 +1826,22 @@ async def show_stats(message: types.Message):
         "HYBRID": "⚡ *ГИБРИДНЫЙ РЕЖИМ*"
     }.get(MODE, "")
     
-    # Определяем текст для дня и группы крови заранее
-    day_display = day_stats_text if day_stats_text else '• Нет данных\n'
-    blood_display = blood_stats_text if blood_stats_text else '• Нет данных\n'
-    
     stats_text = (
-        f"📊 *Статистика донорской станции v3.5*\n\n"
+        f"📊 *Статистика донорской станции*\n\n"
         f"👥 *Всего пользователей:* {total_users}\n"
         f"📋 *Всего записей:* {total_bookings}\n"
         f"📅 *Популярный день:* {most_popular_day}\n"
         f"🩸 *Популярная группа:* {most_popular_blood}\n\n"
-        f"{quota_info}\n"
-        f"*Записи по дням:*\n{day_display}"
-        f"*Записи по группам крови:*\n{blood_display}"
+        f"{quota_info}"
+        f"*Записи по дням:*\n{day_stats_text}"
+        f"*Записи по группам крови:*\n{blood_stats_text}"
         f"{mode_info}"
     )
     
+    # Создаем клавиатуру
+    builder = InlineKeyboardBuilder()
+    
     if message.from_user.id in ADMIN_IDS:
-        builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(text="🗑️ Очистить кэш", callback_data="admin_clear_cache"),
             InlineKeyboardButton(text="🔄 Обновить кэш", callback_data="admin_refresh_cache")
@@ -1856,21 +1850,15 @@ async def show_stats(message: types.Message):
             InlineKeyboardButton(text="📊 Проверить квоты", callback_data="admin_show_quotas"),
             InlineKeyboardButton(text="🔄 Сбросить данные", callback_data="admin_reset")
         )
-        builder.row(
-            InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
-        )
-        reply_markup = builder.as_markup()
-    else:
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
-        )
-        reply_markup = builder.as_markup()
+    
+    builder.row(
+        InlineKeyboardButton(text="🔙 В главное меню", callback_data="main_menu")
+    )
     
     await message.answer(
         stats_text,
         parse_mode="Markdown",
-        reply_markup=reply_markup
+        reply_markup=builder.as_markup()
     )
 
 async def show_quotas(message: types.Message):
@@ -2387,7 +2375,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
-
