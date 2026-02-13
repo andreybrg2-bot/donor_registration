@@ -1761,80 +1761,49 @@ async def show_stats(message: types.Message):
     blood_group_stats = stats_data.get("blood_group_stats", {})
     quota_stats = stats_data.get("quota_stats", {})
     
-    # 🔍 Если day_stats пустой, проверяем альтернативные поля
-    if not day_stats:
-        # Может быть данные в другом формате?
-        if "bookings_by_day" in stats_data:
-            day_stats = stats_data["bookings_by_day"]
-        elif "by_day" in stats_data:
-            day_stats = stats_data["by_day"]
-        elif "days" in stats_data:
-            day_stats = stats_data["days"]
-    
-    if not blood_group_stats:
-        if "bookings_by_blood" in stats_data:
-            blood_group_stats = stats_data["bookings_by_blood"]
-        elif "by_blood" in stats_data:
-            blood_group_stats = stats_data["by_blood"]
-        elif "blood_groups" in stats_data:
-            blood_group_stats = stats_data["blood_groups"]
-    
-    # Если всё ещё пусто, пробуем получить записи напрямую
-    if not day_stats and not blood_group_stats:
-        print(f"[STATS] Данные статистики пусты, пробуем получить записи пользователей")
-        # Попробуем получить хотя бы одну запись для проверки
-        if message.from_user.id:
-            user_bookings = get_user_bookings(message.from_user.id)
-            if user_bookings['status'] == 'success' and user_bookings['data']['bookings']:
-                # Есть записи у текущего пользователя, значит статистика должна быть
-                print(f"[STATS] У пользователя {message.from_user.id} есть записи, но статистика пуста")
-    
+    # 🔍 ОБРАБОТКА ДАННЫХ ПО ДНЯМ
     day_stats_text = ""
     if isinstance(day_stats, dict):
-        # Безопасная обработка данных для сортировки
         valid_days = []
-        for day, value in day_stats.items():
-            if isinstance(value, (int, float)):
-                valid_days.append((day, value))
-            elif isinstance(value, dict) and 'used' in value:
-                valid_days.append((day, value.get('used', 0)))
-            elif isinstance(value, dict) and 'count' in value:
-                valid_days.append((day, value.get('count', 0)))
-            elif isinstance(value, str) and value.isdigit():
-                valid_days.append((day, int(value)))
-            elif isinstance(value, str) and value.replace('.', '').isdigit():
-                valid_days.append((day, float(value)))
+        for day, blood_groups in day_stats.items():
+            if isinstance(blood_groups, dict):
+                # Суммируем все used значения по группам крови для этого дня
+                total_for_day = 0
+                for blood_group, data in blood_groups.items():
+                    if isinstance(data, dict) and 'used' in data:
+                        total_for_day += data.get('used', 0)
+                if total_for_day > 0:
+                    valid_days.append((day, total_for_day))
         
         if valid_days:
             sorted_days = sorted(valid_days, key=lambda x: x[1], reverse=True)[:5]
             for day, count in sorted_days:
                 day_stats_text += f"• *{day}*: {count} зап.\n"
     
+    # 🔍 ОБРАБОТКА ДАННЫХ ПО ГРУППАМ КРОВИ
     blood_stats_text = ""
     if isinstance(blood_group_stats, dict):
-        # Безопасная обработка данных для сортировки
         valid_blood = []
         for bg, value in blood_group_stats.items():
             if isinstance(value, (int, float)):
                 valid_blood.append((bg, value))
-            elif isinstance(value, dict) and 'used' in value:
-                valid_blood.append((bg, value.get('used', 0)))
-            elif isinstance(value, dict) and 'count' in value:
-                valid_blood.append((bg, value.get('count', 0)))
             elif isinstance(value, str) and value.isdigit():
                 valid_blood.append((bg, int(value)))
-            elif isinstance(value, str) and value.replace('.', '').isdigit():
-                valid_blood.append((bg, float(value)))
         
         if valid_blood:
             sorted_bg = sorted(valid_blood, key=lambda x: x[1], reverse=True)
             for bg, count in sorted_bg:
-                blood_stats_text += f"• *{bg}*: {count} зап.\n"
+                if count > 0:  # Показываем только группы с записями
+                    blood_stats_text += f"• *{bg}*: {count} зап.\n"
     
+    # 🔍 ОБРАБОТКА КВОТ
     quota_info = ""
-    if isinstance(quota_stats, dict):
-        total_quota = quota_stats.get("totalQuota", 0)
-        total_used = quota_stats.get("totalUsed", 0)
+    # Используем локальные квоты, так как Google Script возвращает ошибку
+    local_quotas = local_storage.get_quotas()
+    if local_quotas['status'] == 'success':
+        quotas_data = local_quotas['data'].get('quotas', {})
+        total_quota = quotas_data.get('totalQuota', 0)
+        total_used = quotas_data.get('totalUsed', 0)
         remaining = total_quota - total_used
         quota_info = f"📊 *Общая квота:* {total_quota} мест\n"
         quota_info += f"✅ *Использовано:* {total_used} мест\n"
