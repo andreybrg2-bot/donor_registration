@@ -263,50 +263,33 @@ class LocalStorage:
         days = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
         return days[date_obj.weekday()]
     
-    def get_free_times(self, date: str, blood_group: str) -> dict:
-        """Получить свободное время для конкретной даты"""
-        try:
-            date_obj = datetime.strptime(date, "%Y-%m-%d")
-            day_of_week = self._get_day_of_week_ru(date_obj)
-            
-            if day_of_week not in self.quotas:
-                return {"status": "error", "data": "Неверная дата"}
-            
-            if blood_group not in self.quotas[day_of_week]:
-                return {"status": "error", "data": f"Неверная группа крови: {blood_group}"}
-            
-            quota_total = self.quotas[day_of_week][blood_group]
-            
-            busy_times = set()
-            for user_data in self.bookings.values():
-                if date in user_data:
-                    booking = user_data[date]
-                    if booking["blood_group"] == blood_group:
-                        busy_times.add(booking["time"])
-            
-            free_times = [t for t in self.working_hours if t not in busy_times]
-            display_times = free_times[:12]
-            
-            quota_used = len(busy_times)
-            quota_remaining = max(0, quota_total - quota_used)
-            
-            return {
-                "status": "success",
-                "data": {
-                    "times": display_times,
-                    "quota": quota_remaining,
-                    "quota_total": quota_total,
-                    "quota_used": quota_used,
-                    "blood_group": blood_group,
-                    "day": day_of_week,
-                    "date": date
-                }
-            }
-            
-        except ValueError as e:
-            return {"status": "error", "data": f"Неверный формат даты: {date}"}
-        except Exception as e:
-            return {"status": "error", "data": f"Ошибка: {str(e)}"}
+def get_free_times(date: str, blood_group: str) -> dict:
+    """Универсальная функция получения свободного времени"""
+    if MODE == "LOCAL":
+        return local_storage.get_free_times(date, blood_group)
+    elif MODE == "GOOGLE":
+        result = google_client.call_api("get_free_times", {"date": date, "blood_group": blood_group}, force_refresh=True)
+        # Нормализуем ответ
+        if result["status"] == "success":
+            if "data" in result:
+                data = result["data"]
+                # Проверяем, что quota - это число
+                if "quota" not in data or not isinstance(data["quota"], (int, float)):
+                    # Если квота не пришла, вычисляем из quota_total и quota_used
+                    quota_total = data.get("quota_total", 0)
+                    quota_used = data.get("quota_used", 0)
+                    data["quota"] = max(0, quota_total - quota_used)
+        return result
+    elif MODE == "HYBRID":
+        result = google_client.call_api("get_free_times", {"date": date, "blood_group": blood_group}, force_refresh=True)
+        
+        if result["status"] == "error":
+            print(f"[HYBRID] 🔄 Google Script недоступен, переключаемся на локальное хранилище")
+            return local_storage.get_free_times(date, blood_group)
+        
+        return result
+    else:
+        return {"status": "error", "data": "Неизвестный режим работы"}
     
     def check_existing(self, date: str, user_id: int) -> dict:
         """Проверить существующую запись на конкретную дату"""
@@ -1477,7 +1460,7 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
         blood_group = user_data.get('blood_group')
         
         # Получаем актуальный список дат
-        dates_response = get_available_dates(user.id)
+        dates_response = get_available_dates(user.id, force_refresh=True)
         if dates_response['status'] == 'success':
             available_dates = dates_response['data']['available_dates']
         else:
@@ -1557,6 +1540,12 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     
+    # ПЕРЕД РЕГИСТРАЦИЕЙ получаем актуальные данные о квотах
+    times_response = get_free_times(selected_date, blood_group)
+    if times_response['status'] == 'success':
+        quota_before = times_response['data'].get('quota', 0)
+        print(f"[BOOKING] 📊 Квота до записи: {quota_before} для {selected_date} {blood_group}")
+    
     response = register(
         selected_date,
         blood_group,
@@ -1583,6 +1572,17 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     
     ticket_data = response['data']
     
+    # ПОСЛЕ РЕГИСТРАЦИИ принудительно обновляем кэш
+    get_free_times(selected_date, blood_group)  # force_refresh уже внутри
+    
+    # ПРОВЕРЯЕМ реальный остаток мест
+    check_after = get_free_times(selected_date, blood_group)
+    if check_after['status'] == 'success':
+        real_quota = check_after['data'].get('quota', 0)
+        print(f"[BOOKING] 📊 Квота после записи: {real_quota} для {selected_date} {blood_group}")
+        # Используем реальные данные
+        ticket_data['quota_remaining'] = real_quota
+    
     ticket_text = (
         "🎫 *ВАШ ТАЛОН НА ДОНОРСТВО*\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -1606,6 +1606,21 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     
     await state.clear()
     await callback.answer("✅ Запись успешно оформлена!")
+
+
+def force_refresh_quotas(date: str, blood_group: str) -> dict:
+    """Принудительно обновить квоты для конкретной даты и группы крови"""
+    if MODE in ["GOOGLE", "HYBRID"]:
+        # Очищаем кэш для этого конкретного запроса
+        cache_key = f"get_free_times_None_{json.dumps({'date': date, 'blood_group': blood_group}, sort_keys=True)}"
+        if cache_key in google_client.cache:
+            del google_client.cache[cache_key]
+            del google_client.cache_time[cache_key]
+        
+        # Делаем запрос с force_refresh
+        return google_client.call_api("get_free_times", {"date": date, "blood_group": blood_group}, force_refresh=True)
+    return {"status": "error", "data": "Не в режиме Google"}
+
 
 # ========== ФУНКЦИИ КОМАНД ==========
 async def cancel_command(message: types.Message, state: FSMContext):
