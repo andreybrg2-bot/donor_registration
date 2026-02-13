@@ -1713,15 +1713,37 @@ async def show_stats(message: types.Message):
     
     day_stats_text = ""
     if isinstance(day_stats, dict):
-        sorted_days = sorted(day_stats.items(), key=lambda x: x[1], reverse=True)[:5]
-        for day, count in sorted_days:
-            day_stats_text += f"• *{day}*: {count} зап.\n"
+        # Безопасная обработка данных для сортировки
+        valid_days = []
+        for day, value in day_stats.items():
+            if isinstance(value, (int, float)):
+                valid_days.append((day, value))
+            elif isinstance(value, dict) and 'used' in value:
+                valid_days.append((day, value.get('used', 0)))
+            elif isinstance(value, str) and value.isdigit():
+                valid_days.append((day, int(value)))
+        
+        if valid_days:
+            sorted_days = sorted(valid_days, key=lambda x: x[1], reverse=True)[:5]
+            for day, count in sorted_days:
+                day_stats_text += f"• *{day}*: {count} зап.\n"
     
     blood_stats_text = ""
     if isinstance(blood_group_stats, dict):
-        sorted_bg = sorted(blood_group_stats.items(), key=lambda x: x[1], reverse=True)
-        for bg, count in sorted_bg:
-            blood_stats_text += f"• *{bg}*: {count} зап.\n"
+        # Безопасная обработка данных для сортировки
+        valid_blood = []
+        for bg, value in blood_group_stats.items():
+            if isinstance(value, (int, float)):
+                valid_blood.append((bg, value))
+            elif isinstance(value, dict) and 'count' in value:
+                valid_blood.append((bg, value.get('count', 0)))
+            elif isinstance(value, str) and value.isdigit():
+                valid_blood.append((bg, int(value)))
+        
+        if valid_blood:
+            sorted_bg = sorted(valid_blood, key=lambda x: x[1], reverse=True)
+            for bg, count in sorted_bg:
+                blood_stats_text += f"• *{bg}*: {count} зап.\n"
     
     quota_info = ""
     if isinstance(quota_stats, dict):
@@ -1737,7 +1759,8 @@ async def show_stats(message: types.Message):
         "GOOGLE": "🌐 *РЕЖИМ GOOGLE SCRIPT*",
         "HYBRID": "⚡ *ГИБРИДНЫЙ РЕЖИМ*"
     }.get(MODE, "")
-    # Определяем текст для дня и группы крови заранее, чтобы избежать обратных слешей внутри f-выражений
+    
+    # Определяем текст для дня и группы крови заранее
     day_display = day_stats_text if day_stats_text else '• Нет данных\n'
     blood_display = blood_stats_text if blood_stats_text else '• Нет данных\n'
     
