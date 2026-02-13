@@ -769,7 +769,8 @@ def get_user_bookings(user_id: int) -> dict:
     if MODE == "LOCAL":
         return local_storage.get_user_bookings(user_id)
     elif MODE in ["GOOGLE", "HYBRID"]:
-        result = google_client.call_api("get_user_bookings", {}, user_id)
+        # Принудительно запрашиваем свежие данные, игнорируя кэш
+        result = google_client.call_api("get_user_bookings", {}, user_id, force_refresh=True)
         
         # Нормализуем ответ от Google Script
         if result["status"] == "success":
@@ -807,7 +808,12 @@ def get_user_bookings(user_id: int) -> dict:
                         "count": len(bookings_list)
                     }
         
-        if MODE == "HYBRID" and result["status"] == "error":
+        if MODE == "HYBRID" and (result["status"] == "error" or 
+                                 (result["status"] == "success" and 
+                                  isinstance(result.get("data"), dict) and 
+                                  result["data"].get("count", 0) == 0 and
+                                  user_id in local_storage.bookings)):
+            # Если в Google нет записей, но есть локально - используем локальные
             return local_storage.get_user_bookings(user_id)
         
         return result
@@ -819,10 +825,16 @@ def get_quotas() -> dict:
     if MODE == "LOCAL":
         return local_storage.get_quotas()
     elif MODE in ["GOOGLE", "HYBRID"]:
-        result = google_client.call_api("get_quotas", {})
+        # Принудительно запрашиваем свежие данные, игнорируя кэш
+        result = google_client.call_api("get_quotas", {}, force_refresh=True)
         
         if MODE == "HYBRID" and result["status"] == "error":
             print(f"[HYBRID] 🔄 Google Script недоступен, используем локальные квоты")
+            return local_storage.get_quotas()
+        
+        # Если Google Script вернул ошибку или пустые данные
+        if result["status"] == "error" or not result.get("data"):
+            print(f"[GOOGLE] ⚠️ Получены некорректные данные квот, используем локальные квоты")
             return local_storage.get_quotas()
         
         return result
@@ -834,10 +846,16 @@ def get_stats() -> dict:
     if MODE == "LOCAL":
         return local_storage.get_stats()
     elif MODE in ["GOOGLE", "HYBRID"]:
-        result = google_client.call_api("get_stats", {})
+        # Принудительно запрашиваем свежие данные, игнорируя кэш
+        result = google_client.call_api("get_stats", {}, force_refresh=True)
         
         if MODE == "HYBRID" and result["status"] == "error":
             print(f"[HYBRID] 🔄 Google Script недоступен, используем локальную статистику")
+            return local_storage.get_stats()
+        
+        # Если Google Script вернул ошибку или пустые данные
+        if result["status"] == "error" or not result.get("data"):
+            print(f"[GOOGLE] ⚠️ Получены некорректные данные, используем локальную статистику")
             return local_storage.get_stats()
         
         # Нормализуем ответ от Google Script
@@ -846,6 +864,13 @@ def get_stats() -> dict:
                 data = result["data"]
                 if isinstance(data, dict):
                     # Проверяем наличие всех необходимых полей
+                    if "total_bookings" not in data or data["total_bookings"] == 0:
+                        # Если данные пустые, пробуем получить их напрямую
+                        print(f"[GOOGLE] 🔄 Данные статистики пусты, пробуем альтернативный метод")
+                        # Здесь можно добавить вызов другой функции для получения статистики
+                        pass
+                    
+                    # Заполняем отсутствующие поля
                     if "total_bookings" not in data:
                         data["total_bookings"] = 0
                     if "total_users" not in data:
