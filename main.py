@@ -44,7 +44,7 @@ TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 MODE = "GOOGLE"
 
 # URL вашего Google Apps Script
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzsRqhli38yRAE50nL9DButV9C7-H4wdXvdPLCAoxh5eiZEKVzcgYOOmHPXsizZLzte/exec"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwlYSnufkmxwprHNvUuVqNm6T4vzreeRh4FRti89aqkaO7HXqApWPhvR0fl1zkPAWlZ/exec"
 
 # ID администраторов
 ADMIN_IDS = [5097581039]
@@ -804,7 +804,7 @@ def get_user_bookings(user_id: int) -> dict:
         return {"status": "error", "data": "Неизвестный режим работы"}
 
 def get_quotas() -> dict:
-    """Универсальная функция получения квот (НОВАЯ)"""
+    """Универсальная функция получения квот (ИСПРАВЛЕНО)"""
     if MODE == "LOCAL":
         return local_storage.get_quotas()
     elif MODE in ["GOOGLE", "HYBRID"]:
@@ -819,6 +819,22 @@ def get_quotas() -> dict:
         if result["status"] == "error" or not result.get("data"):
             print(f"[GOOGLE] ⚠️ Получены некорректные данные квот, используем локальные квоты")
             return local_storage.get_quotas()
+        
+        # Нормализуем ответ от Google Script
+        if result["status"] == "success" and "data" in result:
+            data = result["data"]
+            if isinstance(data, dict) and "quotas" in data:
+                # Убеждаемся, что структура правильная
+                quotas_data = data["quotas"]
+                if isinstance(quotas_data, dict):
+                    if "totalQuota" not in quotas_data:
+                        quotas_data["totalQuota"] = 0
+                    if "totalUsed" not in quotas_data:
+                        quotas_data["totalUsed"] = 0
+                    if "remaining" not in quotas_data:
+                        quotas_data["remaining"] = quotas_data.get("totalQuota", 0) - quotas_data.get("totalUsed", 0)
+                    if "byDay" not in quotas_data:
+                        quotas_data["byDay"] = {}
         
         return result
     else:
@@ -1882,6 +1898,7 @@ async def show_quotas(message: types.Message):
     
     quotas_data = quotas_response['data']
     
+    # Проверяем структуру ответа
     if isinstance(quotas_data, dict) and 'quotas' in quotas_data:
         quotas = quotas_data['quotas']
         message_text = quotas_data.get('message', 'Информация о квотах')
@@ -1893,6 +1910,7 @@ async def show_quotas(message: types.Message):
         )
         return
     
+    # Получаем данные с безопасными значениями по умолчанию
     total_quota = quotas.get('totalQuota', 0)
     total_used = quotas.get('totalUsed', 0)
     remaining = quotas.get('remaining', total_quota - total_used)
@@ -1902,20 +1920,29 @@ async def show_quotas(message: types.Message):
     text += f"📋 *Всего квот:* {total_quota}\n"
     text += f"✅ *Использовано:* {total_used}\n"
     text += f"⏳ *Осталось:* {remaining}\n\n"
-    text += f"*Детали по дням:*\n"
     
-    for day, day_data in by_day.items():
-        day_total = day_data.get('total', 0)
-        day_used = day_data.get('used', 0)
-        day_remaining = day_data.get('remaining', day_total - day_used)
-        text += f"\n📅 *{day}*:\n"
-        text += f"  Всего: {day_total}, Использовано: {day_used}, Осталось: {day_remaining}\n"
-        
-        day_quotas = day_data.get('quotas', {})
-        if day_quotas:
-            quotas_text = ", ".join([f"{bg}: {q}" for bg, q in day_quotas.items()])
-            text += f"  Квоты по группам: {quotas_text}\n"
+    if by_day:
+        text += f"*Детали по дням:*\n"
+        for day, day_data in by_day.items():
+            day_total = day_data.get('total', 0)
+            day_used = day_data.get('used', 0)
+            day_remaining = day_data.get('remaining', day_total - day_used)
+            text += f"\n📅 *{day}*:\n"
+            text += f"  Всего: {day_total}, Использовано: {day_used}, Осталось: {day_remaining}\n"
+            
+            day_quotas = day_data.get('quotas', {})
+            if day_quotas:
+                # Форматируем квоты по группам крови в строку
+                quotas_list = []
+                for bg, q in day_quotas.items():
+                    if q > 0:  # Показываем только группы с ненулевыми квотами
+                        quotas_list.append(f"{bg}: {q}")
+                if quotas_list:
+                    text += f"  Квоты по группам: {', '.join(quotas_list)}\n"
+    else:
+        text += f"\n*Детали по дням:*\n• Нет данных\n"
     
+    # Создаем клавиатуру
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_refresh_cache"),
@@ -1937,12 +1964,27 @@ async def reset_command(message: types.Message):
         )
         return
     
+    # Очищаем Google Script кэш
+    if MODE in ["GOOGLE", "HYBRID"]:
+        clear_cache_result = clear_cache()
+        if clear_cache_result['status'] == 'success':
+            print(f"[RESET] ✅ Кэш Google Script очищен")
+        else:
+            print(f"[RESET] ⚠️ Ошибка очистки кэша: {clear_cache_result.get('data')}")
+    
+    # Сбрасываем локальные данные
     local_storage.reset_data()
+    
+    # Принудительно обновляем кэш
+    if MODE in ["GOOGLE", "HYBRID"]:
+        force_refresh_cache(message.from_user.id)
     
     await message.answer(
         "✅ *Все данные успешно сброшены!*\n\n"
         "Тестовые данные восстановлены.\n"
-        "Все пользовательские записи удалены.",
+        "Кэш Google Script очищен.\n"
+        "Все пользовательские записи удалены.\n\n"
+        "Используйте /start для начала работы.",
         parse_mode="Markdown",
         reply_markup=get_admin_keyboard()
     )
@@ -2375,3 +2417,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
