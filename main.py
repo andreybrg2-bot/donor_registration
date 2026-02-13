@@ -849,6 +849,10 @@ def get_stats() -> dict:
         # Принудительно запрашиваем свежие данные, игнорируя кэш
         result = google_client.call_api("get_stats", {}, force_refresh=True)
         
+        # 🔍 ОТЛАДКА: выводим реальную структуру данных
+        print(f"[DEBUG] get_stats - статус: {result.get('status')}")
+        print(f"[DEBUG] get_stats - полный ответ: {json.dumps(result, indent=2, ensure_ascii=False)[:500]}")
+        
         if MODE == "HYBRID" and result["status"] == "error":
             print(f"[HYBRID] 🔄 Google Script недоступен, используем локальную статистику")
             return local_storage.get_stats()
@@ -863,12 +867,17 @@ def get_stats() -> dict:
             if "data" in result:
                 data = result["data"]
                 if isinstance(data, dict):
-                    # Проверяем наличие всех необходимых полей
-                    if "total_bookings" not in data or data["total_bookings"] == 0:
-                        # Если данные пустые, пробуем получить их напрямую
-                        print(f"[GOOGLE] 🔄 Данные статистики пусты, пробуем альтернативный метод")
-                        # Здесь можно добавить вызов другой функции для получения статистики
-                        pass
+                    # 🔍 ОТЛАДКА: смотрим, что именно пришло в day_stats
+                    print(f"[DEBUG] day_stats raw: {data.get('day_stats')}")
+                    print(f"[DEBUG] blood_group_stats raw: {data.get('blood_group_stats')}")
+                    
+                    # Проверяем, может быть данные лежат в другом поле
+                    if not data.get("day_stats") and "days" in data:
+                        data["day_stats"] = data["days"]
+                    if not data.get("blood_group_stats") and "blood_groups" in data:
+                        data["blood_group_stats"] = data["blood_groups"]
+                    if not data.get("total_bookings") and "total" in data:
+                        data["total_bookings"] = data.get("total", 0)
                     
                     # Заполняем отсутствующие поля
                     if "total_bookings" not in data:
@@ -880,9 +889,25 @@ def get_stats() -> dict:
                     if "blood_group_stats" not in data:
                         data["blood_group_stats"] = {}
                     if "most_popular_day" not in data:
-                        data["most_popular_day"] = "нет данных"
+                        # Вычисляем из day_stats
+                        if data["day_stats"]:
+                            try:
+                                most_popular = max(data["day_stats"].items(), key=lambda x: x[1])
+                                data["most_popular_day"] = most_popular[0]
+                            except:
+                                data["most_popular_day"] = "нет данных"
+                        else:
+                            data["most_popular_day"] = "нет данных"
                     if "most_popular_blood_group" not in data:
-                        data["most_popular_blood_group"] = "нет данных"
+                        # Вычисляем из blood_group_stats
+                        if data["blood_group_stats"]:
+                            try:
+                                most_popular = max(data["blood_group_stats"].items(), key=lambda x: x[1])
+                                data["most_popular_blood_group"] = most_popular[0]
+                            except:
+                                data["most_popular_blood_group"] = "нет данных"
+                        else:
+                            data["most_popular_blood_group"] = "нет данных"
                     if "quota_stats" not in data:
                         # Пытаемся получить квоты отдельно
                         quotas_result = get_quotas()
@@ -1736,6 +1761,34 @@ async def show_stats(message: types.Message):
     blood_group_stats = stats_data.get("blood_group_stats", {})
     quota_stats = stats_data.get("quota_stats", {})
     
+    # 🔍 Если day_stats пустой, проверяем альтернативные поля
+    if not day_stats:
+        # Может быть данные в другом формате?
+        if "bookings_by_day" in stats_data:
+            day_stats = stats_data["bookings_by_day"]
+        elif "by_day" in stats_data:
+            day_stats = stats_data["by_day"]
+        elif "days" in stats_data:
+            day_stats = stats_data["days"]
+    
+    if not blood_group_stats:
+        if "bookings_by_blood" in stats_data:
+            blood_group_stats = stats_data["bookings_by_blood"]
+        elif "by_blood" in stats_data:
+            blood_group_stats = stats_data["by_blood"]
+        elif "blood_groups" in stats_data:
+            blood_group_stats = stats_data["blood_groups"]
+    
+    # Если всё ещё пусто, пробуем получить записи напрямую
+    if not day_stats and not blood_group_stats:
+        print(f"[STATS] Данные статистики пусты, пробуем получить записи пользователей")
+        # Попробуем получить хотя бы одну запись для проверки
+        if message.from_user.id:
+            user_bookings = get_user_bookings(message.from_user.id)
+            if user_bookings['status'] == 'success' and user_bookings['data']['bookings']:
+                # Есть записи у текущего пользователя, значит статистика должна быть
+                print(f"[STATS] У пользователя {message.from_user.id} есть записи, но статистика пуста")
+    
     day_stats_text = ""
     if isinstance(day_stats, dict):
         # Безопасная обработка данных для сортировки
@@ -1745,8 +1798,12 @@ async def show_stats(message: types.Message):
                 valid_days.append((day, value))
             elif isinstance(value, dict) and 'used' in value:
                 valid_days.append((day, value.get('used', 0)))
+            elif isinstance(value, dict) and 'count' in value:
+                valid_days.append((day, value.get('count', 0)))
             elif isinstance(value, str) and value.isdigit():
                 valid_days.append((day, int(value)))
+            elif isinstance(value, str) and value.replace('.', '').isdigit():
+                valid_days.append((day, float(value)))
         
         if valid_days:
             sorted_days = sorted(valid_days, key=lambda x: x[1], reverse=True)[:5]
@@ -1760,10 +1817,14 @@ async def show_stats(message: types.Message):
         for bg, value in blood_group_stats.items():
             if isinstance(value, (int, float)):
                 valid_blood.append((bg, value))
+            elif isinstance(value, dict) and 'used' in value:
+                valid_blood.append((bg, value.get('used', 0)))
             elif isinstance(value, dict) and 'count' in value:
                 valid_blood.append((bg, value.get('count', 0)))
             elif isinstance(value, str) and value.isdigit():
                 valid_blood.append((bg, int(value)))
+            elif isinstance(value, str) and value.replace('.', '').isdigit():
+                valid_blood.append((bg, float(value)))
         
         if valid_blood:
             sorted_bg = sorted(valid_blood, key=lambda x: x[1], reverse=True)
