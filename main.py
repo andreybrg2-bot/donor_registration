@@ -2060,16 +2060,16 @@ async def reset_command(message: types.Message):
     except Exception as e:
         print(f"[RESET] ❌ Критическая ошибка: {str(e)}")
         try:
+            # Отправляем БЕЗ Markdown разметки, чтобы избежать ошибок парсинга
             await message.answer(
-                f"❌ *Критическая ошибка при выполнении /reset:*\n`{str(e)}`\n\nПроверьте логи бота.",
-                parse_mode="Markdown",
+                f"❌ Критическая ошибка при выполнении /reset: {str(e)}\n\nПроверьте логи бота.",
                 reply_markup=get_admin_keyboard()
             )
         except Exception as inner_e:
             print(f"[RESET] ❌ Ошибка при отправке сообщения об ошибке: {inner_e}")
-            # Отправляем без Markdown если и это не работает
+            # Последняя попытка - совсем без форматирования
             await message.answer(
-                f"❌ Критическая ошибка при выполнении /reset: {str(e)}\n\nПроверьте логи бота.",
+                f"Критическая ошибка при выполнении /reset. Проверьте логи бота.",
                 reply_markup=get_admin_keyboard()
             )
 
@@ -2107,9 +2107,9 @@ async def clear_cache_command(message: types.Message):
     
     except Exception as e:
         print(f"[ERROR] clear_cache_command: {e}")
+        # Отправляем без Markdown
         await message.answer(
-            f"❌ *Критическая ошибка:*\n`{str(e)}`",
-            parse_mode="Markdown",
+            f"❌ Критическая ошибка: {str(e)}",
             reply_markup=get_admin_keyboard()
         )
 
@@ -2154,9 +2154,9 @@ async def refresh_cache_command(message: types.Message):
     
     except Exception as e:
         print(f"[ERROR] refresh_cache_command: {e}")
+        # Отправляем без Markdown
         await message.answer(
-            f"❌ *Критическая ошибка:*\n`{str(e)}`",
-            parse_mode="Markdown",
+            f"❌ Критическая ошибка: {str(e)}",
             reply_markup=get_admin_keyboard()
         )
 
