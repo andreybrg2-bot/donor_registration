@@ -44,7 +44,7 @@ TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 MODE = "GOOGLE"
 
 # URL вашего Google Apps Script
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIEYGKjo1_nMERQL3AU1WmonxjM6cIS4WoFR1DyPlxvOyA0u9dJxyrC4FzF7uCG3UbCg/exec"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzK3aHBgGtbJPFIwT--6Z5mc-zlyFuOdZ0bp2GxdhZHCOIcMtOe1EGoQr0muNBAaDLs8w/exec"
 
 # ID администраторов
 ADMIN_IDS = [5097581039]
@@ -886,7 +886,6 @@ def get_stats() -> dict:
         print(f"[DEBUG] get_stats - статус: {result.get('status')}")
         print(f"[DEBUG] get_stats - полный ответ: {json.dumps(result, indent=2, ensure_ascii=False)[:500]}")
         
-             
         # Нормализуем ответ от Google Script
         if result["status"] == "success":
             if "data" in result:
@@ -947,27 +946,36 @@ def get_stats() -> dict:
 
 def clear_cache() -> dict:
     """Очистить кэш Google Script"""
-    if MODE in ["GOOGLE", "HYBRID"]:
-        return google_client.call_api("clear_cache", {})
-    else:
-        return {"status": "success", "data": "В локальном режиме кэш очищается автоматически"}
+    try:
+        if MODE in ["GOOGLE", "HYBRID"]:
+            result = google_client.call_api("clear_cache", {})
+            return result
+        else:
+            return {"status": "success", "data": "В локальном режиме кэш очищается автоматически"}
+    except Exception as e:
+        print(f"[ERROR] clear_cache: {e}")
+        return {"status": "error", "data": str(e)}
 
 def force_refresh_cache(user_id: int = None) -> dict:
     """Принудительно обновить кэш данных из Google Таблиц"""
-    if MODE in ["GOOGLE", "HYBRID"]:
-        print(f"[CACHE] 🔄 Принудительное обновление кэша")
-        
-        clear_cache_result = clear_cache()
-        if clear_cache_result['status'] != 'success':
-            print(f"[CACHE] ⚠️ Не удалось очистить кэш: {clear_cache_result.get('data', 'unknown error')}")
-        
-        if user_id:
-            return get_available_dates(user_id, force_refresh=True)
+    try:
+        if MODE in ["GOOGLE", "HYBRID"]:
+            print(f"[CACHE] 🔄 Принудительное обновление кэша")
+            
+            clear_cache_result = clear_cache()
+            if clear_cache_result['status'] != 'success':
+                print(f"[CACHE] ⚠️ Не удалось очистить кэш: {clear_cache_result.get('data', 'unknown error')}")
+            
+            if user_id:
+                return get_available_dates(user_id, force_refresh=True)
+            else:
+                test_user_id = 1
+                return get_available_dates(test_user_id, force_refresh=True)
         else:
-            test_user_id = 1
-            return get_available_dates(test_user_id, force_refresh=True)
-    else:
-        return {"status": "success", "data": "Локальный режим - кэш не используется"}
+            return {"status": "success", "data": "Локальный режим - кэш не используется"}
+    except Exception as e:
+        print(f"[ERROR] force_refresh_cache: {e}")
+        return {"status": "error", "data": str(e)}
 
 # ========== ОГРАНИЧЕНИЕ ЧАСТОТЫ ЗАПРОСОВ ==========
 class RateLimiter:
@@ -1983,45 +1991,84 @@ async def show_quotas(message: types.Message):
 
 async def reset_command(message: types.Message):
     """Команда /reset - сбросить кэш и обновить данные из Google Таблиц (только для админов)"""
-    if message.from_user.id not in ADMIN_IDS:
-        await message.answer(
-            "⛔ *У вас нет прав для выполнения этой команды.*",
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer(
+                "⛔ *У вас нет прав для выполнения этой команды.*",
+                parse_mode="Markdown"
+            )
+            return
+        
+        # Сообщение о начале процесса
+        msg = await message.answer(
+            "🔄 *Очистка кэша и обновление данных из Google Таблиц...*",
             parse_mode="Markdown"
         )
-        return
-    
-    # Сообщение о начале процесса
-    msg = await message.answer(
-        "🔄 *Очистка кэша и обновление данных из Google Таблиц...*",
-        parse_mode="Markdown"
-    )
-    
-    # Очищаем Google Script кэш
-    if MODE in ["GOOGLE", "HYBRID"]:
-        clear_cache_result = clear_cache()
-        if clear_cache_result['status'] == 'success':
-            print(f"[RESET] ✅ Кэш Google Script очищен")
+        
+        errors = []
+        
+        # Очищаем Google Script кэш
+        if MODE in ["GOOGLE", "HYBRID"]:
+            try:
+                clear_cache_result = clear_cache()
+                if clear_cache_result['status'] == 'success':
+                    print(f"[RESET] ✅ Кэш Google Script очищен")
+                else:
+                    error_msg = f"Ошибка очистки кэша: {clear_cache_result.get('data', 'Неизвестная ошибка')}"
+                    print(f"[RESET] ⚠️ {error_msg}")
+                    errors.append(error_msg)
+            except Exception as e:
+                error_msg = f"Исключение при очистке кэша: {str(e)}"
+                print(f"[RESET] ❌ {error_msg}")
+                errors.append(error_msg)
+        
+        # Принудительно обновляем кэш (загружаем свежие данные из Google Таблиц)
+        if MODE in ["GOOGLE", "HYBRID"]:
+            try:
+                refresh_result = force_refresh_cache(message.from_user.id)
+                if refresh_result['status'] == 'success':
+                    print(f"[RESET] ✅ Данные обновлены из Google Таблиц")
+                else:
+                    error_msg = f"Ошибка обновления данных: {refresh_result.get('data', 'Неизвестная ошибка')}"
+                    print(f"[RESET] ⚠️ {error_msg}")
+                    errors.append(error_msg)
+            except Exception as e:
+                error_msg = f"Исключение при обновлении данных: {str(e)}"
+                print(f"[RESET] ❌ {error_msg}")
+                errors.append(error_msg)
+        
+        # Формируем ответ
+        if errors:
+            error_text = "\n".join([f"• {err}" for err in errors])
+            await msg.edit_text(
+                f"⚠️ *Команда /reset выполнена с ошибками:*\n\n{error_text}\n\n"
+                f"Проверьте подключение к Google Script.",
+                parse_mode="Markdown",
+                reply_markup=get_admin_keyboard()
+            )
         else:
-            print(f"[RESET] ⚠️ Ошибка очистки кэша: {clear_cache_result.get('data')}")
+            await msg.edit_text(
+                "✅ *Кэш успешно сброшен и данные обновлены из Google Таблиц!*\n\n"
+                "📌 *Важно:* Эта команда не удаляет записи из Google Таблицы.\n"
+                "Она только очищает локальный кэш и загружает актуальные данные.\n\n"
+                "Для удаления всех записей из таблицы используйте функции:\n"
+                "• В таблице: меню 'Донорский бот' → '🗑️ Очистить все записи'\n"
+                "• Или удалите строки вручную на листе 'Доноры'.",
+                parse_mode="Markdown",
+                reply_markup=get_admin_keyboard()
+            )
     
-    # Принудительно обновляем кэш (загружаем свежие данные из Google Таблиц)
-    if MODE in ["GOOGLE", "HYBRID"]:
-        refresh_result = force_refresh_cache(message.from_user.id)
-        if refresh_result['status'] == 'success':
-            print(f"[RESET] ✅ Данные обновлены из Google Таблиц")
-        else:
-            print(f"[RESET] ⚠️ Ошибка обновления данных: {refresh_result.get('data')}")
-    
-    await msg.edit_text(
-        "✅ *Кэш успешно сброшен и данные обновлены из Google Таблиц!*\n\n"
-        "📌 *Важно:* Эта команда не удаляет записи из Google Таблицы.\n"
-        "Она только очищает локальный кэш и загружает актуальные данные.\n\n"
-        "Для удаления всех записей из таблицы используйте функции:\n"
-        "• В таблице: меню 'Донорский бот' → '🗑️ Очистить все записи'\n"
-        "• Или удалите строки вручную на листе 'Доноры'.",
-        parse_mode="Markdown",
-        reply_markup=get_admin_keyboard()
-    )
+    except Exception as e:
+        print(f"[RESET] ❌ Критическая ошибка: {str(e)}")
+        try:
+            await message.answer(
+                f"❌ *Критическая ошибка при выполнении /reset:*\n`{str(e)}`\n\n"
+                f"Проверьте логи бота.",
+                parse_mode="Markdown",
+                reply_markup=get_admin_keyboard()
+            )
+        except:
+            pass
 
 async def clear_cache_command(message: types.Message):
     """Команда /clearcache - очистить кэш квот (только для админов)"""
@@ -2460,4 +2507,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
+    
