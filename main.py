@@ -804,37 +804,42 @@ def get_user_bookings(user_id: int) -> dict:
         return {"status": "error", "data": "Неизвестный режим работы"}
 
 def get_quotas() -> dict:
-    """Универсальная функция получения квот (ИСПРАВЛЕНО)"""
+    """Универсальная функция получения квот (ИСПРАВЛЕНО: больше не подставляем тестовые данные)"""
     if MODE == "LOCAL":
         return local_storage.get_quotas()
     elif MODE in ["GOOGLE", "HYBRID"]:
         # Принудительно запрашиваем свежие данные, игнорируя кэш
         result = google_client.call_api("get_quotas", {}, force_refresh=True)
         
-        if MODE == "HYBRID" and result["status"] == "error":
-            print(f"[HYBRID] 🔄 Google Script недоступен, используем локальные квоты")
-            return local_storage.get_quotas()
+        # Если Google Script недоступен или вернул ошибку - показываем ошибку, а не тестовые данные
+        if result["status"] == "error":
+            print(f"[GOOGLE] ❌ Ошибка получения квот: {result.get('data', 'Неизвестная ошибка')}")
+            return {
+                "status": "error", 
+                "data": "Не удалось получить данные из Google Таблиц. Проверьте подключение."
+            }
         
-        # Если Google Script вернул ошибку или пустые данные
-        if result["status"] == "error" or not result.get("data"):
-            print(f"[GOOGLE] ⚠️ Получены некорректные данные квот, используем локальные квоты")
-            return local_storage.get_quotas()
+        # Если пришли пустые данные или неверная структура
+        if not result.get("data") or not isinstance(result.get("data"), dict):
+            return {
+                "status": "error",
+                "data": "Получены некорректные данные от Google Script"
+            }
         
         # Нормализуем ответ от Google Script
-        if result["status"] == "success" and "data" in result:
-            data = result["data"]
-            if isinstance(data, dict) and "quotas" in data:
+        data = result["data"]
+        if isinstance(data, dict) and "quotas" in data:
+            quotas_data = data["quotas"]
+            if isinstance(quotas_data, dict):
                 # Убеждаемся, что структура правильная
-                quotas_data = data["quotas"]
-                if isinstance(quotas_data, dict):
-                    if "totalQuota" not in quotas_data:
-                        quotas_data["totalQuota"] = 0
-                    if "totalUsed" not in quotas_data:
-                        quotas_data["totalUsed"] = 0
-                    if "remaining" not in quotas_data:
-                        quotas_data["remaining"] = quotas_data.get("totalQuota", 0) - quotas_data.get("totalUsed", 0)
-                    if "byDay" not in quotas_data:
-                        quotas_data["byDay"] = {}
+                if "totalQuota" not in quotas_data:
+                    quotas_data["totalQuota"] = 0
+                if "totalUsed" not in quotas_data:
+                    quotas_data["totalUsed"] = 0
+                if "remaining" not in quotas_data:
+                    quotas_data["remaining"] = quotas_data.get("totalQuota", 0) - quotas_data.get("totalUsed", 0)
+                if "byDay" not in quotas_data:
+                    quotas_data["byDay"] = {}
         
         return result
     else:
@@ -2153,7 +2158,7 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
                 await callback.answer("⛔ У вас нет прав для этой операции", show_alert=True)
                 return
             
-            quotas_response = get_quotas()
+            quotas_response = get_quotas()  # <-- здесь используется исправленная функция
             
             if quotas_response['status'] == 'error':
                 await callback.message.edit_text(
@@ -2163,6 +2168,7 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
                 )
                 await callback.answer()
                 return
+
             
             quotas_data = quotas_response['data']
             
@@ -2433,3 +2439,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
