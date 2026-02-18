@@ -44,7 +44,7 @@ TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 MODE = "GOOGLE"
 
 # URL вашего Google Apps Script
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzK3aHBgGtbJPFIwT--6Z5mc-zlyFuOdZ0bp2GxdhZHCOIcMtOe1EGoQr0muNBAaDLs8w/exec"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx3rKzWsOcu03A3LNn3Fa7EF5TQluJ4bvA8XRabhy_q6mzEtWFSrLIxF9m12sqkzWP4Cw/exec"
 
 # ID администраторов
 ADMIN_IDS = [5097581039]
@@ -804,46 +804,75 @@ def get_user_bookings(user_id: int) -> dict:
         return {"status": "error", "data": "Неизвестный режим работы"}
 
 def get_quotas() -> dict:
-    """Универсальная функция получения квот (ИСПРАВЛЕНО: больше не подставляем тестовые данные)"""
+    """Универсальная функция получения квот (ТОЛЬКО ИЗ GOOGLE ТАБЛИЦ)"""
+    
+    # Если режим LOCAL - возвращаем локальные данные
     if MODE == "LOCAL":
         return local_storage.get_quotas()
+    
+    # Для GOOGLE и HYBRID режимов - только данные из Google
     elif MODE in ["GOOGLE", "HYBRID"]:
         # Принудительно запрашиваем свежие данные, игнорируя кэш
         result = google_client.call_api("get_quotas", {}, force_refresh=True)
         
-        # Если Google Script недоступен или вернул ошибку - показываем ошибку, а не тестовые данные
-        if result["status"] == "error":
+        # Проверяем статус ответа
+        if result["status"] != "success":
             print(f"[GOOGLE] ❌ Ошибка получения квот: {result.get('data', 'Неизвестная ошибка')}")
             return {
                 "status": "error", 
-                "data": "Не удалось получить данные из Google Таблиц. Проверьте подключение."
+                "data": "❌ Не удалось получить данные из Google Таблиц. Проверьте подключение к интернету и доступность Google Script."
             }
         
-        # Если пришли пустые данные или неверная структура
-        if not result.get("data") or not isinstance(result.get("data"), dict):
+        # Проверяем наличие данных
+        if "data" not in result:
             return {
                 "status": "error",
-                "data": "Получены некорректные данные от Google Script"
+                "data": "❌ Google Script вернул пустой ответ"
             }
         
-        # Нормализуем ответ от Google Script
         data = result["data"]
-        if isinstance(data, dict) and "quotas" in data:
-            quotas_data = data["quotas"]
-            if isinstance(quotas_data, dict):
-                # Убеждаемся, что структура правильная
-                if "totalQuota" not in quotas_data:
-                    quotas_data["totalQuota"] = 0
-                if "totalUsed" not in quotas_data:
-                    quotas_data["totalUsed"] = 0
-                if "remaining" not in quotas_data:
-                    quotas_data["remaining"] = quotas_data.get("totalQuota", 0) - quotas_data.get("totalUsed", 0)
-                if "byDay" not in quotas_data:
-                    quotas_data["byDay"] = {}
         
+        # Проверяем структуру данных
+        if not isinstance(data, dict):
+            return {
+                "status": "error",
+                "data": f"❌ Неверный формат данных: ожидался объект, получен {type(data).__name__}"
+            }
+        
+        # Проверяем наличие поля quotas
+        if "quotas" not in data:
+            return {
+                "status": "error",
+                "data": "❌ В ответе отсутствуют данные о квотах (поле 'quotas')"
+            }
+        
+        quotas_data = data["quotas"]
+        
+        # Проверяем структуру quotas
+        if not isinstance(quotas_data, dict):
+            return {
+                "status": "error",
+                "data": f"❌ Неверный формат квот: ожидался объект, получен {type(quotas_data).__name__}"
+            }
+        
+        # Убеждаемся, что все необходимые поля присутствуют
+        if "totalQuota" not in quotas_data:
+            quotas_data["totalQuota"] = 0
+        if "totalUsed" not in quotas_data:
+            quotas_data["totalUsed"] = 0
+        if "remaining" not in quotas_data:
+            quotas_data["remaining"] = quotas_data.get("totalQuota", 0) - quotas_data.get("totalUsed", 0)
+        if "byDay" not in quotas_data:
+            quotas_data["byDay"] = {}
+        
+        # Возвращаем результат, даже если квоты пустые (но это данные из Google)
         return result
+    
     else:
-        return {"status": "error", "data": "Неизвестный режим работы"}
+        return {
+            "status": "error", 
+            "data": f"❌ Неизвестный режим работы: {MODE}"
+        }
 
 def get_stats() -> dict:
     """Универсальная функция получения статистики"""
@@ -2439,4 +2468,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
