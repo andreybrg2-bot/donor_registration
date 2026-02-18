@@ -44,7 +44,7 @@ TOKEN = "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ"
 MODE = "GOOGLE"
 
 # URL вашего Google Apps Script
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxIEYGKjo1_nMERQL3AU1WmonxjM6cIS4WoFR1DyPlxvOyA0u9dJxyrC4FzF7uCG3UbCg/exec"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwa0SxinMLAMVkKWn3gLJYWy1kDgazni_V_ccI2tbeT5B7Z5-u9gTSuIMchgKTZYuGMRw/exec"
 
 # ID администраторов
 ADMIN_IDS = [5097581039]
@@ -2531,3 +2531,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
