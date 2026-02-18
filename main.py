@@ -2041,8 +2041,7 @@ async def reset_command(message: types.Message):
         if errors:
             error_text = "\n".join([f"• {err}" for err in errors])
             await msg.edit_text(
-                f"⚠️ *Команда /reset выполнена с ошибками:*\n\n{error_text}\n\n"
-                f"Проверьте подключение к Google Script.",
+                f"⚠️ *Команда /reset выполнена с ошибками:*\n\n{error_text}\n\nПроверьте подключение к Google Script.",
                 parse_mode="Markdown",
                 reply_markup=get_admin_keyboard()
             )
@@ -2062,39 +2061,17 @@ async def reset_command(message: types.Message):
         print(f"[RESET] ❌ Критическая ошибка: {str(e)}")
         try:
             await message.answer(
-                f"❌ *Критическая ошибка при выполнении /reset:*\n`{str(e)}`\n\n"
-                f"Проверьте логи бота.",
+                f"❌ *Критическая ошибка при выполнении /reset:*\n`{str(e)}`\n\nПроверьте логи бота.",
                 parse_mode="Markdown",
                 reply_markup=get_admin_keyboard()
             )
-        except:
-            pass
-
-async def clear_cache_command(message: types.Message):
-    """Команда /clearcache - очистить кэш квот (только для админов)"""
-    if message.from_user.id not in ADMIN_IDS:
-        await message.answer(
-            "⛔ *У вас нет прав для выполнения этой команды.*",
-            parse_mode="Markdown"
-        )
-        return
-    
-    result = clear_cache()
-    
-    if result['status'] == 'success':
-        await message.answer(
-            "✅ *Кэш квот успешно очищен!*\n\n"
-            "Теперь будут загружены свежие данные из Google Таблиц.",
-            parse_mode="Markdown",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        await message.answer(
-            f"❌ *Ошибка очистки кэша:* {result['data']}\n\n"
-            f"Проверьте подключение к Google Script.",
-            parse_mode="Markdown",
-            reply_markup=get_admin_keyboard()
-        )
+        except Exception as inner_e:
+            print(f"[RESET] ❌ Ошибка при отправке сообщения об ошибке: {inner_e}")
+            # Отправляем без Markdown если и это не работает
+            await message.answer(
+                f"❌ Критическая ошибка при выполнении /reset: {str(e)}\n\nПроверьте логи бота.",
+                reply_markup=get_admin_keyboard()
+            )
 
 async def refresh_cache_command(message: types.Message):
     """Команда /refresh - обновить кэш из Google Таблиц (только для админов)"""
